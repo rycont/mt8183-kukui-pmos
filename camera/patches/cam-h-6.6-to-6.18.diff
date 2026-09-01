@@ -1,0 +1,17 @@
+--- cros66/cam/mtk_cam.h	2026-09-01 22:33:48.362169286 +0900
++++ build-cam/mtk_cam.h	2026-09-02 02:37:06.043858041 +0900
+@@ -86,6 +86,14 @@
+ 	struct work_struct frame_work;
+ 	struct list_head list;
+ 	u64 timestamp;
++	/*
++	 * Request API 를 쓰지 않는 사용자(예: libcamera 의 simple 파이프라인)를
++	 * 위해 드라이버가 직접 만든 요청. 이 경우 req.objects 가 비어 있으므로
++	 * 완료 처리할 버퍼를 여기에 들고 있는다.
++	 */
++	bool synthetic;
++	struct mtk_cam_dev_buffer *sbuf;
++	struct mtk_cam_dev *scam;
+ };
+ 
+ /*

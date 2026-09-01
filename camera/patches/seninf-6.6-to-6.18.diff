@@ -1,0 +1,89 @@
+--- cros66/seninf/mtk_seninf.c	2026-09-01 22:33:43.604315898 +0900
++++ build/mtk_seninf.c	2026-09-02 00:06:09.415360915 +0900
+@@ -436,6 +436,12 @@
+ 		0x40, pseninf + SENINF1_CTRL_EXT);
+ 	writel(SENINF_TIMESTAMP_STEP, pseninf + SENINF_TG1_TM_STP);
+ 
++	dev_info(dev, "SENINF-DBG port=%u seninf=%d lanes=%u code=0x%x %ux%u\n",
++		 priv->port, seninf, priv->sensor[priv->port].num_data_lanes,
++		 priv->fmt[priv->port].format.code,
++		 priv->fmt[priv->port].format.width,
++		 priv->fmt[priv->port].format.height);
++
+ 	mtk_seninf_set_csi_mipi(priv, (unsigned int)seninf);
+ 
+ 	mtk_seninf_set_mux(priv, (unsigned int)seninf);
+@@ -501,7 +507,7 @@
+ 	unsigned int i;
+ 
+ 	for (i = 0; i < sd->entity.num_pads; i++) {
+-		mf = v4l2_subdev_get_try_format(sd, sd_state, i);
++		mf = v4l2_subdev_state_get_format(sd_state, i);
+ 		*mf = mtk_seninf_default_fmt;
+ 	}
+ 
+@@ -518,7 +524,7 @@
+ 		fmt->format.code = MEDIA_BUS_FMT_SBGGR10_1X10;
+ 
+ 	if (fmt->which == V4L2_SUBDEV_FORMAT_TRY) {
+-		*v4l2_subdev_get_try_format(sd, sd_state, fmt->pad) = fmt->format;
++		*v4l2_subdev_state_get_format(sd_state, fmt->pad) = fmt->format;
+ 	} else {
+ 		priv->fmt[fmt->pad].pad = fmt->pad;
+ 		priv->fmt[fmt->pad].format.code = fmt->format.code;
+@@ -536,7 +542,7 @@
+ 	struct mtk_seninf *priv = container_of(sd, struct mtk_seninf, subdev);
+ 
+ 	if (fmt->which == V4L2_SUBDEV_FORMAT_TRY) {
+-		fmt->format = *v4l2_subdev_get_try_format(sd, sd_state, fmt->pad);
++		fmt->format = *v4l2_subdev_state_get_format(sd_state, fmt->pad);
+ 	} else {
+ 		fmt->format.code = priv->fmt[fmt->pad].format.code;
+ 		fmt->format.width = priv->fmt[fmt->pad].format.width;
+@@ -570,10 +576,18 @@
+ 	struct mtk_seninf *priv = container_of(sd, struct mtk_seninf, subdev);
+ 	int ret = 0;
+ 
+-	if (on)
++	if (on) {
+ 		ret = mtk_seninf_power_on(priv);
+-	else
++	} else {
++		void __iomem *b = priv->base_reg;
++
++		dev_info(priv->dev,
++			 "CSI-DBG INT_STATUS=0x%08x EXT=0x%08x MUX=0x%08x\n",
++			 readl(b + SENINF1_CSI2_INT_STATUS),
++			 readl(b + SENINF1_CSI2_INT_STATUS_EXT),
++			 readl(b + SENINF_TOP_CAM_MUX_CTRL));
+ 		mtk_seninf_power_off(priv);
++	}
+ 
+ 	return ret;
+ };
+@@ -850,7 +864,7 @@
+ 	sd->flags |= (V4L2_SUBDEV_FL_HAS_DEVNODE | V4L2_SUBDEV_FL_HAS_EVENTS);
+ 
+ 	priv->subdev.dev = dev;
+-	snprintf(sd->name, V4L2_SUBDEV_NAME_SIZE, "%s",
++	snprintf(sd->name, sizeof(sd->name), "%s",
+ 		 dev_name(dev));
+ 	v4l2_set_subdevdata(sd, priv);
+ 
+@@ -986,7 +1000,7 @@
+ 	SET_RUNTIME_PM_OPS(seninf_pm_suspend, seninf_pm_resume, NULL)
+ };
+ 
+-static int seninf_remove(struct platform_device *pdev)
++static void seninf_remove(struct platform_device *pdev)
+ {
+ 	struct mtk_seninf *priv = dev_get_drvdata(&pdev->dev);
+ 	struct v4l2_subdev *subdev = &priv->subdev;
+@@ -997,7 +1011,6 @@
+ 
+ 	pm_runtime_disable(priv->dev);
+ 
+-	return 0;
+ }
+ 
+ #ifdef CONFIG_OF

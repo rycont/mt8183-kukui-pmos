@@ -1,0 +1,135 @@
+Subject: arm64: dts: mt8183-kukui: enable DPI output via IT6505 DP bridge
+
+Kukui Chromebooks route the SoC DPI output to an ITE IT6505 DisplayPort
+transmitter on i2c3, which drives the USB-C DP alt mode output. The
+regulator for the bridge is already described, but the bridge itself and
+the dpi0 output were never upstreamed, so external displays do not work.
+
+Also wire the bridge as the HDMI codec so DP audio works.
+
+--- a/arch/arm64/boot/dts/mediatek/mt8183-kukui.dtsi
++++ b/arch/arm64/boot/dts/mediatek/mt8183-kukui.dtsi
+@@ -101,6 +101,7 @@
+ 
+ 	sound: mt8183-sound {
+ 		mediatek,platform = <&afe>;
++	mediatek,hdmi-codec = <&it6505dptx>;
+ 		pinctrl-names = "default",
+ 				"aud_tdm_out_on",
+ 				"aud_tdm_out_off";
+@@ -250,6 +251,17 @@
+ 	proc-supply = <&mt6358_vproc11_reg>;
+ };
+ 
++&dpi0 {
++	pinctrl-names = "sleep", "default";
++	pinctrl-0 = <&dpi_pin_default>;
++	pinctrl-1 = <&dpi_pin_func>;
++	status = "okay";
++};
++
++&dpi_out {
++	remote-endpoint = <&it6505_in>;
++};
++
+ &dsi0 {
+ 	status = "okay";
+ };
+@@ -285,6 +297,37 @@
+ 	clock-frequency = <100000>;
+ 	#address-cells = <1>;
+ 	#size-cells = <0>;
++
++	it6505dptx: dp-bridge@5c {
++		compatible = "ite,it6505";
++		reg = <0x5c>;
++		interrupts-extended = <&pio 152 IRQ_TYPE_LEVEL_LOW>;
++		pinctrl-names = "default";
++		pinctrl-0 = <&it6505_pins>;
++		#sound-dai-cells = <0>;
++		ovdd-supply = <&mt6358_vsim2_reg>;
++		pwr18-supply = <&it6505_pp18_reg>;
++		reset-gpios = <&pio 179 GPIO_ACTIVE_HIGH>;
++		extcon = <&usbc_extcon>;
++
++		ports {
++			#address-cells = <1>;
++			#size-cells = <0>;
++
++			port@0 {
++				reg = <0>;
++
++				it6505_in: endpoint {
++					link-frequencies = /bits/ 64 <150000000>;
++					remote-endpoint = <&dpi_out>;
++				};
++			};
++
++			port@1 {
++				reg = <1>;
++			};
++		};
++	};
+ };
+ 
+ &i2c5 {
+@@ -506,6 +549,59 @@
+ 		};
+ 	};
+ 
++	dpi_pin_default: dpi-pin-default-pins {
++		pins-cmd-dat {
++			pinmux = <PINMUX_GPIO13__FUNC_GPIO13>,
++				 <PINMUX_GPIO14__FUNC_GPIO14>,
++				 <PINMUX_GPIO15__FUNC_GPIO15>,
++				 <PINMUX_GPIO16__FUNC_GPIO16>,
++				 <PINMUX_GPIO17__FUNC_GPIO17>,
++				 <PINMUX_GPIO18__FUNC_GPIO18>,
++				 <PINMUX_GPIO19__FUNC_GPIO19>,
++				 <PINMUX_GPIO20__FUNC_GPIO20>,
++				 <PINMUX_GPIO21__FUNC_GPIO21>,
++				 <PINMUX_GPIO22__FUNC_GPIO22>,
++				 <PINMUX_GPIO23__FUNC_GPIO23>,
++				 <PINMUX_GPIO24__FUNC_GPIO24>,
++				 <PINMUX_GPIO25__FUNC_GPIO25>,
++				 <PINMUX_GPIO26__FUNC_GPIO26>,
++				 <PINMUX_GPIO27__FUNC_GPIO27>,
++				 <PINMUX_GPIO28__FUNC_GPIO28>;
++			drive-strength = <6>;
++			output-low;
++		};
++	};
++
++	dpi_pin_func: dpi-pin-func-pins {
++		pins-cmd-dat {
++			pinmux = <PINMUX_GPIO13__FUNC_DBPI_D0>,
++				 <PINMUX_GPIO14__FUNC_DBPI_D1>,
++				 <PINMUX_GPIO15__FUNC_DBPI_D2>,
++				 <PINMUX_GPIO16__FUNC_DBPI_D3>,
++				 <PINMUX_GPIO17__FUNC_DBPI_D4>,
++				 <PINMUX_GPIO18__FUNC_DBPI_D5>,
++				 <PINMUX_GPIO19__FUNC_DBPI_D6>,
++				 <PINMUX_GPIO20__FUNC_DBPI_D7>,
++				 <PINMUX_GPIO21__FUNC_DBPI_D8>,
++				 <PINMUX_GPIO22__FUNC_DBPI_D9>,
++				 <PINMUX_GPIO23__FUNC_DBPI_D10>,
++				 <PINMUX_GPIO24__FUNC_DBPI_D11>,
++				 <PINMUX_GPIO25__FUNC_DBPI_HSYNC>,
++				 <PINMUX_GPIO26__FUNC_DBPI_VSYNC>,
++				 <PINMUX_GPIO27__FUNC_DBPI_DE>,
++				 <PINMUX_GPIO28__FUNC_DBPI_CK>;
++			drive-strength = <6>;
++		};
++	};
++
++	it6505_pins: it6505-pins {
++		pins-hpd {
++			pinmux = <PINMUX_GPIO9__FUNC_GPIO9>;
++			input-enable;
++			bias-pull-up;
++		};
++	};
++
+ 	i2c3_pins: i2c3-pins {
+ 		pins-bus {
+ 			pinmux = <PINMUX_GPIO50__FUNC_SCL3>,

@@ -1,0 +1,22 @@
+Subject: libcamera: enable software ISP for mtk-seninf
+
+MT8183's ISP Pass 1 writes Bayer data to memory but performs no
+demosaicing or colour conversion, and the mtk-mdp converter cannot
+consume its output formats. Enable libcamera's software ISP so the
+simple pipeline handler produces a usable stream.
+
+Applied as a prepare() step in the pmaports temp/libcamera APKBUILD,
+following the same approach as the existing PinePhone patch.
+
+--- a/APKBUILD
++++ b/APKBUILD
+@@
+ builddir="$srcdir/$pkgname-v$_pkgver"
++
++prepare() {
++	default_prepare
++
++	sed -i 's|{ "mtk-seninf", { { "mtk-mdp", 3 } }, false },|{ "mtk-seninf", {}, true },|' \
++		src/libcamera/pipeline/simple/simple.cpp
++	grep -q '{ "mtk-seninf", {}, true },' src/libcamera/pipeline/simple/simple.cpp
++}

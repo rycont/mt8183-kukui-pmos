@@ -1,0 +1,166 @@
+Subject: arm64: dts: mt8183-kukui-krane: add front and rear cameras
+
+Krane (Lenovo IdeaPad Duet) has an OV8856 (rear, i2c2) and an OV02A10
+(front, i2c4), both feeding the seninf CSI-2 receiver.
+
+--- a/arch/arm64/boot/dts/mediatek/mt8183-kukui-krane.dtsi
++++ b/arch/arm64/boot/dts/mediatek/mt8183-kukui-krane.dtsi
+@@ -107,6 +107,35 @@
+ 		pagesize = <32>;
+ 		vcc-supply = <&mt6358_vcama2_reg>;
+ 	};
++
++	sensor_main: camera@10 {
++		compatible = "ovti,ov8856";
++		reg = <0x10>;
++
++		clocks = <&topckgen CLK_TOP_MUX_CAMTG>,
++			 <&topckgen CLK_TOP_UNIVP_192M_D8>;
++		clock-names = "xvclk", "freq_mux";
++		clock-frequency = <19200000>;
++		assigned-clocks = <&topckgen CLK_TOP_MUX_CAMTG>;
++		assigned-clock-parents = <&topckgen CLK_TOP_UNIVP_192M_D8>;
++
++		reset-gpios = <&pio 111 GPIO_ACTIVE_LOW>;
++		pinctrl-names = "default";
++		pinctrl-0 = <&camera_pins_cam0>;
++
++		avdd-supply = <&mt6358_vcama2_reg>;
++		dvdd-supply = <&mt6358_vcamd_reg>;
++		dovdd-supply = <&mt6358_vcamio_reg>;
++
++		port {
++			ov8856_endpoint: endpoint {
++				clock-lanes = <0>;
++				data-lanes = <1 2 3 4>;
++				link-frequencies = /bits/ 64 <360000000 180000000>;
++				remote-endpoint = <&seninf_port0_endpoint>;
++			};
++		};
++	};
+ };
+ 
+ &i2c4 {
+@@ -122,6 +151,36 @@
+ 		pagesize = <32>;
+ 		vcc-supply = <&mt6358_vcn18_reg>;
+ 	};
++
++	sensor_sub: camera@3d {
++		compatible = "ovti,ov02a10";
++		reg = <0x3d>;
++
++		clocks = <&topckgen CLK_TOP_MUX_CAMTG2>;
++		clock-names = "eclk";
++		clock-frequency = <24000000>;
++		assigned-clocks = <&topckgen CLK_TOP_MUX_CAMTG2>;
++		assigned-clock-parents = <&topckgen CLK_TOP_UNIVP_192M_D8>;
++
++		rotation = <180>;
++		powerdown-gpios = <&pio 107 GPIO_ACTIVE_HIGH>;
++		reset-gpios = <&pio 109 GPIO_ACTIVE_LOW>;
++		pinctrl-names = "default";
++		pinctrl-0 = <&camera_pins_cam1>;
++
++		avdd-supply = <&mt6358_vcama1_reg>;
++		dvdd-supply = <&mt6358_vcn18_reg>;
++		dovdd-supply = <&mt6358_vcamio_reg>;
++
++		port {
++			ov02a10_endpoint: endpoint {
++				data-lanes = <1>;
++				ovti,mipi-clock-voltage = <3>;
++				link-frequencies = /bits/ 64 <390000000>;
++				remote-endpoint = <&seninf_port1_endpoint>;
++			};
++		};
++	};
+ };
+ 
+ &pio {
+@@ -368,6 +427,33 @@
+ 			output-high;
+ 		};
+ 	};
++
++	camera_pins_cam1: camera-cam1-pins {
++		pins-clk {
++			pinmux = <PINMUX_GPIO100__FUNC_CMMCLK1>;
++		};
++
++		pins-powerdown {
++			pinmux = <PINMUX_GPIO107__FUNC_GPIO107>;
++			output-high;
++		};
++
++		pins-reset {
++			pinmux = <PINMUX_GPIO109__FUNC_GPIO109>;
++			output-low;
++		};
++	};
++
++	camera_pins_cam0: camera-cam0-pins {
++		pins-clk {
++			pinmux = <PINMUX_GPIO99__FUNC_CMMCLK0>;
++		};
++
++		pins-reset {
++			pinmux = <PINMUX_GPIO111__FUNC_GPIO111>;
++			output-low;
++		};
++	};
+ };
+ 
+ &cros_ec {
+@@ -387,3 +473,51 @@
+ &sound {
+ 	compatible = "mediatek,mt8183_mt6358_ts3a227_max98357";
+ };
++
++&mt6358_vcama2_reg {
++	regulator-min-microvolt = <2800000>;
++	regulator-max-microvolt = <2800000>;
++};
++
++&seninf {
++	status = "okay";
++	assigned-clocks = <&topckgen CLK_TOP_MUX_CAMTG>;
++	assigned-clock-parents = <&topckgen CLK_TOP_UNIVP_192M_D8>;
++
++	ports {
++		#address-cells = <1>;
++		#size-cells = <0>;
++
++		port@0 {
++			reg = <0>;
++
++			seninf_port0_endpoint: endpoint {
++				clock-lanes = <0>;
++				data-lanes = <1 2 3 4>;
++				remote-endpoint = <&ov8856_endpoint>;
++			};
++		};
++
++		port@1 {
++			reg = <1>;
++
++			seninf_port1_endpoint: endpoint {
++				clock-lanes = <0>;
++				data-lanes = <1>;
++				remote-endpoint = <&ov02a10_endpoint>;
++			};
++		};
++
++		port@4 {
++			reg = <4>;
++
++			seninf_camisp_endpoint: endpoint {
++				remote-endpoint = <&camisp_endpoint>;
++			};
++		};
++	};
++};
++
++&camisp {
++	status = "okay";
++};

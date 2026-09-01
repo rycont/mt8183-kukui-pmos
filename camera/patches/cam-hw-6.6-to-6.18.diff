@@ -1,0 +1,29 @@
+--- cros66/cam/mtk_cam-hw.c	2026-09-01 22:33:56.558930643 +0900
++++ build-cam/mtk_cam-hw.c	2026-09-02 02:37:23.359952680 +0900
+@@ -49,7 +49,8 @@
+ {
+ 	struct mtk_cam_dev_request *req =
+ 		container_of(work, struct mtk_cam_dev_request, frame_work);
+-	struct mtk_cam_dev *cam =
++	/* 합성 요청은 media_request 가 없으므로 직접 들고 온 포인터를 쓴다 */
++	struct mtk_cam_dev *cam = req->synthetic ? req->scam :
+ 		container_of(req->req.mdev, struct mtk_cam_dev, media_dev);
+ 	struct mtk_isp_p1_device *p1_dev = dev_get_drvdata(cam->dev);
+ 
+@@ -682,7 +683,7 @@
+ 	return 0;
+ }
+ 
+-static int mtk_isp_remove(struct platform_device *pdev)
++static void mtk_isp_remove(struct platform_device *pdev)
+ {
+ 	struct device *dev = &pdev->dev;
+ 	struct mtk_isp_p1_device *p1_dev = dev_get_drvdata(dev);
+@@ -695,7 +696,6 @@
+ 			     DMA_ATTR_SKIP_CPU_SYNC);
+ 	isp_teardown_scp_rproc(p1_dev);
+ 
+-	return 0;
+ }
+ 
+ static const struct dev_pm_ops mtk_isp_pm_ops = {

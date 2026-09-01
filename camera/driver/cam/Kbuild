@@ -1,0 +1,3 @@
+obj-m += mtk-cam-isp.o
+mtk-cam-isp-objs := mtk_cam.o mtk_cam-hw.o
+ccflags-y += -include $(src)/mtk-uapi-compat.h
