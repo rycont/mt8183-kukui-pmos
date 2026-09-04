@@ -42,6 +42,17 @@ katsu, juniper, fennel, willow 등)가 같은 DT 를 쓰므로, 대부분 그대
 ChromeOS 커널은 둘 다 갖고 있고, **카메라 스택은 6.6 까지 포워드포트**돼
 있다. 그래서 5.10 이 아니라 6.6 을 출발점으로 삼았다.
 
+## 설치
+
+pmOS 순정 설치본에 apk 세 개를 얹으면 된다. 기기에서 빌드할 것은 없다.
+자세한 내용은 [INSTALL.md](INSTALL.md).
+
+```sh
+sudo apk add --allow-untrusted linux-postmarketos-mediatek-mt81-*.apk \
+    device-google-kukui-*.apk libcamera-*.apk
+sudo mkinitfs && sudo reboot
+```
+
 ## 구성
 
 ```
