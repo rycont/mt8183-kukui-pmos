@@ -1,0 +1,97 @@
+#!/bin/sh
+
+# SPDX-License-Identifier: MIT
+
+set -eu
+
+last_mode=
+input_mode_command=${PLASMA_INPUT_MODE_COMMAND:-/usr/bin/plasma-input-mode}
+quicksetting_id=org.local.plasma.quicksetting.inputmode
+
+enable_quicksetting()
+{
+    enabled=$(kreadconfig6 \
+        --file plasmamobilerc \
+        --group QuickSettings \
+        --key enabledQuickSettings)
+
+    case ",$enabled," in
+        *",$quicksetting_id,"*)
+            return 0
+            ;;
+    esac
+
+    if [ -n "$enabled" ]; then
+        enabled="$enabled,$quicksetting_id"
+    else
+        enabled=$quicksetting_id
+    fi
+
+    kwriteconfig6 --notify \
+        --file plasmamobilerc \
+        --group QuickSettings \
+        --key enabledQuickSettings \
+        "$enabled"
+}
+
+read_tablet_property()
+{
+    busctl --user get-property \
+        org.kde.KWin \
+        /org/kde/KWin \
+        org.kde.KWin.TabletModeManager \
+        "$1" | awk '{ print $2 }'
+}
+
+set_docked_mode()
+{
+    kwriteconfig6 --notify \
+        --file plasmamobilerc \
+        --group General \
+        --key convergenceModeEnabled \
+        --type bool \
+        "$1"
+}
+
+apply_mode()
+{
+    tablet_mode=$(read_tablet_property tabletMode)
+
+    if [ "$tablet_mode" = true ]; then
+        next_mode=touch
+    else
+        next_mode=hardware
+    fi
+
+    [ "$next_mode" != "$last_mode" ] || return 0
+
+    if [ "$next_mode" = hardware ]; then
+        set_docked_mode true
+        "$input_mode_command" hardware
+    else
+        "$input_mode_command" touch
+        set_docked_mode false
+    fi
+
+    last_mode=$next_mode
+}
+
+enable_quicksetting
+
+if [ "$(read_tablet_property tabletModeAvailable)" != true ]; then
+    echo "plasma-input-mode-auto: KWin reports no tablet-mode switch; automatic mode is disabled" >&2
+    while :; do
+        sleep 86400
+    done
+fi
+
+apply_mode
+
+gdbus monitor --session --dest org.kde.KWin --object-path /org/kde/KWin \
+    | while IFS= read -r event_line; do
+    case "$event_line" in
+        *org.kde.KWin.TabletModeManager.tabletModeChanged*)
+            apply_mode
+            ;;
+    esac
+done

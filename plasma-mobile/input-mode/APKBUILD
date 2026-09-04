@@ -1,0 +1,59 @@
+# Maintainer: 정한 Rycont <35295182+rycont@users.noreply.github.com>
+pkgname=plasma-mobile-input-mode-systemd
+pkgver=0.3.0
+pkgrel=0
+pkgdesc="Plasma Mobile quick setting for Plasma Keyboard and IBus Hangul"
+url="https://github.com/rycont/mt8183-kukui-pmos/tree/main/plasma-mobile/input-mode"
+arch="noarch"
+license="MIT"
+depends="plasma-mobile ibus ibus-hangul kconfig qt6-qttools systemd flock glib"
+checkdepends="python3 qt6-qtdeclarative"
+source="
+	plasma-input-mode
+	plasma-input-mode-auto
+	plasma-input-mode-auto.service
+	inputmode-main.qml
+	metadata.json
+	README.md
+	LICENSE
+	"
+builddir="$srcdir"
+
+check() {
+	sh -n "$srcdir/plasma-input-mode"
+	sh -n "$srcdir/plasma-input-mode-auto"
+	python3 -m json.tool "$srcdir/metadata.json" >/dev/null
+	/usr/lib/qt6/libexec/qmlcachegen \
+		--only-bytecode \
+		--warnings-are-errors \
+		-I /usr/lib/qt6/qml \
+		--resource-path /plasma/quicksettings/org.local.plasma.quicksetting.inputmode/contents/ui/main.qml \
+		-o "$builddir/inputmode-main-qmlcache.cpp" \
+		"$srcdir/inputmode-main.qml"
+}
+
+package() {
+	install -Dm755 "$srcdir/plasma-input-mode" \
+		"$pkgdir/usr/bin/plasma-input-mode"
+	install -Dm755 "$srcdir/plasma-input-mode-auto" \
+		"$pkgdir/usr/bin/plasma-input-mode-auto"
+	install -Dm644 "$srcdir/plasma-input-mode-auto.service" \
+		"$pkgdir/usr/lib/systemd/user/plasma-input-mode-auto.service"
+	mkdir -p "$pkgdir/usr/lib/systemd/user/plasma-workspace.target.wants"
+	ln -s ../plasma-input-mode-auto.service \
+		"$pkgdir/usr/lib/systemd/user/plasma-workspace.target.wants/plasma-input-mode-auto.service"
+	install -Dm644 "$srcdir/inputmode-main.qml" \
+		"$pkgdir/usr/share/plasma/quicksettings/org.local.plasma.quicksetting.inputmode/contents/ui/main.qml"
+	install -Dm644 "$srcdir/metadata.json" \
+		"$pkgdir/usr/share/plasma/quicksettings/org.local.plasma.quicksetting.inputmode/metadata.json"
+}
+
+sha512sums="
+d67d32f6c5fb82450b3fd7ea625f8f63184e507cbacdabbe21f3ab854e428745d7e246c4c06e59673b321a3e3dcf25422d0f96c3a3b31f4f037dbc2e2a6a2b29  plasma-input-mode
+23459e414f941fdfe87acc42422f1e538d73a2f5e516c222c9b589695cb9f9a141c0471d2f0e06fcb657127164642f9d39b9a71f12af4f06fc84f260d5c3258a  plasma-input-mode-auto
+4e397dc38bfe10a5f33f39acf3ec3fa846ae311c9eaa208b854e6e2a67f8770ed4bcf120aab46924404453980e975b9905bdfd34cf5d9c9682c6f53cca184a05  plasma-input-mode-auto.service
+7e4c8a8cca2fb15d4cae98ea280e98af9f2ffba0f9b4302b509174b0365d781c29f18ab61aab5130ea6722c2ece903495efb8aa9e51d34e4abde44849b91b8b5  inputmode-main.qml
+dd9aead758c372458740a10534106861c0ce3d8de790da19e84cf1f4f0b8513313528d3378a02d2d07ad2aa0e5cadf559eceed39f762b5c53a3112c040748fb6  metadata.json
+72f37d9cb48d40fb46fe6586a30f544e0e5f19742c0bd06830bb4e89830f17e7b9a164105b43063139315bbc8eb8f879458f55286cda33a69f6b6c742978b38f  README.md
+8663fe94b666998849aed0a4f109f3eecaa0a1012ef70f6e75d54cba98a148e417cd689080285746c943026fcfca180cca56bee0c6d34fcfec6af9d6c464612d  LICENSE
+"

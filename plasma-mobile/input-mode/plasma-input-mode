@@ -1,0 +1,105 @@
+#!/bin/sh
+
+# SPDX-License-Identifier: MIT
+
+set -eu
+
+plasma_input_method=/usr/share/applications/org.kde.plasma.keyboard.desktop
+runtime_dir=${XDG_RUNTIME_DIR:-/tmp}
+lock_file="$runtime_dir/plasma-input-mode.lock"
+
+exec 9>"$lock_file"
+if ! flock -w 5 9; then
+    exit 0
+fi
+
+clear_kwin_input_method()
+{
+    kwriteconfig6 \
+        --file kwinrc \
+        --group Wayland \
+        --key InputMethod \
+        --delete \
+        ''
+}
+
+set_ui_state()
+{
+    kwriteconfig6 --notify \
+        --file kde.org/plasmashell.conf \
+        --group InputModeQuickSetting \
+        --key hardwareMode \
+        --type bool \
+        "$1"
+}
+
+start_plasma_keyboard()
+{
+    clear_kwin_input_method
+    kwriteconfig6 --notify \
+        --file kwinrc \
+        --group Wayland \
+        --key InputMethod \
+        "$plasma_input_method"
+
+    qdbus6 org.kde.KWin /KWin reconfigure
+
+    # Recreate KWin's input-method process. Reconfigure by itself does not
+    # replace the process that is already connected to KWin.
+    busctl --user set-property \
+        org.kde.KWin \
+        /VirtualKeyboard \
+        org.kde.kwin.VirtualKeyboard \
+        enabled b false
+    sleep 0.5
+    busctl --user set-property \
+        org.kde.KWin \
+        /VirtualKeyboard \
+        org.kde.kwin.VirtualKeyboard \
+        enabled b true
+}
+
+start_ibus_hangul()
+{
+    # Initialize the engine list only when Hangul is not configured already.
+    if ! gsettings get org.freedesktop.ibus.general preload-engines | grep -q "'hangul'"; then
+        gsettings set org.freedesktop.ibus.general preload-engines \
+            "['xkb:us::eng', 'hangul']"
+        gsettings set org.freedesktop.ibus.general engines-order \
+            "['xkb:us::eng', 'hangul']"
+    fi
+
+    gsettings set org.freedesktop.ibus.engine.hangul initial-input-mode 'hangul'
+    clear_kwin_input_method
+
+    # This registers IBus as KWin's Wayland input method and replaces the
+    # currently running Plasma Keyboard process.
+    ibus start --type kde-wayland
+
+    attempt=0
+    while [ "$attempt" -lt 15 ]; do
+        if ibus engine hangul 2>/dev/null; then
+            return 0
+        fi
+        attempt=$((attempt + 1))
+        sleep 0.2
+    done
+
+    echo "plasma-input-mode: IBus started, but the Hangul engine was not ready" >&2
+    return 1
+}
+
+case "${1:-}" in
+    touch)
+        start_plasma_keyboard
+        set_ui_state false
+        ;;
+    hardware)
+        start_ibus_hangul
+        set_ui_state true
+        ;;
+    *)
+        echo "usage: plasma-input-mode touch|hardware" >&2
+        exit 2
+        ;;
+esac

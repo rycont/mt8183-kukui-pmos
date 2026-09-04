@@ -1,0 +1,10 @@
+[Unit]
+Description=Automatically switch Plasma Mobile input and docked modes
+Before=plasma-plasmashell.service
+PartOf=plasma-workspace.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/plasma-input-mode-auto
+Restart=always
+RestartSec=2

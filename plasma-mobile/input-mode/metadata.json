@@ -1,0 +1,15 @@
+{
+    "KPackageStructure": "KPackage/GenericQML",
+    "KPlugin": {
+        "Authors": [
+            {
+                "Name": "정한 Rycont"
+            }
+        ],
+        "Description": "Switch between Plasma Keyboard and IBus Hangul",
+        "Icon": "input-keyboard",
+        "Id": "org.local.plasma.quicksetting.inputmode",
+        "License": "MIT",
+        "Name": "Input Mode"
+    }
+}

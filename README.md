@@ -1,12 +1,14 @@
-# MT8183 Kukui — 디스플레이 · 카메라 활성화 (postmarketOS)
+# MT8183 Kukui — postmarketOS 활성화 기록
 
 Lenovo IdeaPad Duet Chromebook (`google-krane`) 에서 메인라인 리눅스가
-지원하지 않던 두 가지를 동작시킨 기록.
+지원하지 않거나 Plasma Mobile에서 바로 쓰기 어려웠던 기능을 동작시킨 기록.
 
 - **USB-C 외부 디스플레이 + DP 오디오** (ITE IT6505 브리지)
 - **전·후면 카메라** (OV8856 / OV02A10 → seninf → ISP Pass 1 → libcamera)
+- **키보드 커버 입력 모드 자동 전환** (Plasma Keyboard ↔ IBus Hangul)
 
-대상: postmarketOS v26.06, 커널 6.18.28 (`linux-postmarketos-mediatek-mt81`)
+대상: postmarketOS v26.06, 커널 6.18.28
+(`linux-postmarketos-mediatek-mt81`), Plasma Mobile 6.6.6
 
 `device-google-kukui` 패키지가 커버하는 16개 보드(krane, kodama, kakadu,
 katsu, juniper, fennel, willow 등)가 같은 DT 를 쓰므로, 대부분 그대로
@@ -21,6 +23,8 @@ katsu, juniper, fennel, willow 등)가 같은 DT 를 쓰므로, 대부분 그대
 | 전면 카메라 | OV02A10 1600x1200 |
 | 후면 카메라 | OV8856 3280x2464 |
 | libcamera | 두 카메라 모두 열거, **30 fps** ABGR8888 |
+| 키보드 커버 부착 | 독 모드 + IBus Hangul 자동 전환 |
+| 키보드 커버 분리 | 모바일 모드 + Plasma Keyboard OSK 자동 전환 |
 
 전면 카메라(OV02A10) 촬영 샘플 — 소프트웨어 ISP 만으로 디베이어·화이트밸런스한 결과:
 
@@ -46,6 +50,7 @@ camera/dt/            seninf · camisp 노드, 센서 노드
 camera/driver/        6.18 로 포팅한 드라이버 소스
 camera/patches/       ChromeOS 6.6 원본 대비 변경분
 libcamera/            소프트웨어 ISP 활성화 (pmaports APKBUILD)
+plasma-mobile/        Plasma Mobile 사용자 공간 통합 패키지
 tools/                캡처 · 브리지 · RAW 후처리
 docs/findings.md      문서에 없던 발견들
 docs/process.md       막힌 지점과 판별 방법
@@ -62,6 +67,11 @@ docs/process.md       막힌 지점과 판별 방법
 **Snapshot(libcamera)** — 미디어 디바이스 이름, pad ops, `V4L2_CAP_IO_MC`,
 표준 베이어 fourcc 노출, CMA 크기, 비요청 스트리밍 — 여섯 겹.
 
+**Plasma Mobile 입력** — KWin의 태블릿 모드 D-Bus 신호를 기준으로 커버
+키보드 부착 상태를 판별한다. 일반 USB·Bluetooth 키보드와 Logi Unifying
+수신기는 자동 전환을 일으키지 않는다. 빌드와 설치 방법은
+[`plasma-mobile/input-mode/`](plasma-mobile/input-mode/)에 정리했다.
+
 ## 빌드
 
 ```bash
@@ -75,6 +85,14 @@ make -C <kernel-tree> LLVM=1 ARCH=arm64 mediatek/mt8183-kukui-krane-sku176.dtb
 
 기기에서 `mkinitfs` 로 kpart 를 다시 만들면 반영된다.
 
+Plasma Mobile 입력 모드 패키지는 커널 빌드와 독립적이다.
+
+```bash
+cd plasma-mobile/input-mode
+abuild checksum
+abuild -r
+```
+
 ## 알려진 제약
 
 - 카메라 튜닝 파일(`ov8856.yaml` / `ov02a10.yaml`)이 없어 `uncalibrated.yaml`
@@ -83,6 +101,8 @@ make -C <kernel-tree> LLVM=1 ARCH=arm64 mediatek/mt8183-kukui-krane-sku176.dtb
   libcamera 의 소프트웨어 ISP 가 담당한다.
 - 후면 카메라는 AF(dw9768) 를 연결하지 않아 고정 초점이다.
 - 모듈은 수동 로드 상태다. 부팅 자동화는 하지 않았다.
+- 입력 모드 자동 전환은 KWin이 하드웨어 태블릿 모드 스위치를 제공하는
+  기기에서만 활성화된다. 그 외 기기에서는 빠른 설정 타일을 수동으로 쓴다.
 
 ## 라이선스
 
@@ -92,9 +112,13 @@ make -C <kernel-tree> LLVM=1 ARCH=arm64 mediatek/mt8183-kukui-krane-sku176.dtb
 
 DT 파일은 `GPL-2.0 OR MIT`, Copyright (c) 2018 MediaTek Inc.
 
+`plasma-mobile/input-mode/`는 해당 디렉터리의 `LICENSE`에 따라 MIT로
+배포한다.
+
 ## 업스트림에 대해
 
-이 저장소의 내용은 AI 어시스턴트(Claude)와의 작업으로 만들어졌다.
+이 저장소의 내용은 AI 어시스턴트(Claude, OpenAI Codex)와의 작업으로
+만들어졌다.
 
 - **postmarketOS 는 AI 기여물 제출을 금지한다**
   ([AI Policy](https://docs.postmarketos.org/policies-and-processes/development/ai-policy.html)).
