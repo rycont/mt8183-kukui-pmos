@@ -526,6 +526,23 @@ static int seninf_set_fmt(struct v4l2_subdev *sd,
 		priv->fmt[fmt->pad].format.height = fmt->format.height;
 	}
 
+	/*
+	 * V4L2 서브디바이스 규약상 sink pad 포맷은 source pad 로 전파해야
+	 * 한다. libcamera 는 sink 에 set 한 뒤 source 에서 get 하므로,
+	 * 전파하지 않으면 센서 해상도와 무관하게 기본값이 그대로 나간다.
+	 */
+	if (fmt->pad < NUM_SENSORS) {
+		unsigned int i;
+
+		for (i = CAM_MUX_IDX_MIN; i < NUM_PADS; i++) {
+			if (fmt->which == V4L2_SUBDEV_FORMAT_TRY)
+				*v4l2_subdev_state_get_format(sd_state, i) =
+					fmt->format;
+			else
+				priv->fmt[i].format = fmt->format;
+		}
+	}
+
 	return 0;
 }
 

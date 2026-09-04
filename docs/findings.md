@@ -90,3 +90,39 @@ Internal error: Oops - CFI
 `struct media_device` 의 `driver_name` 필드를 채우면
 `MEDIA_IOC_DEVICE_INFO` 가 그 값을 반환한다. 커널 문서상 USB 드라이버를
 위한 것이지만, 이 값이 곧 libcamera 의 `DeviceMatch` 대상이다.
+
+## 8. sink pad 포맷을 source pad 로 전파하지 않으면 해상도가 고정된다
+
+libcamera 의 `simple` 파이프라인 핸들러는 체인의 각 엔티티에 대해
+**sink pad 에 포맷을 `set` 하고 source pad 에서 `get` 한다.**
+그 사이의 전파는 드라이버 책임이다 (V4L2 서브디바이스 규약).
+
+seninf 와 mtk-cam-p1 은 원래 pad 별로 포맷을 따로 저장만 했다. 그래서
+센서를 3280x2464 로 올려도 source pad 는 `init_state` 기본값 1600x1200 을
+계속 돌려줬고, 후면 카메라(8MP)가 1596x1200 으로 고정됐다.
+
+```
+ov8856[0] -> seninf[0]:  3280x2464   ← 센서 pad 는 정상
+seninf[4] -> mtk-cam-p1: 1600x1200   ← 전파 없음
+```
+
+하드웨어는 멀쩡했다. `media-ctl` 로 체인을 수동으로 3280x2464 에 맞추면
+프레임당 8,081,920 바이트(= 3280x2464 8비트 베이어)가 정확히 나온다.
+증상은 libcamera 쪽에 보이지만 원인은 드라이버 두 곳이다.
+
+## 9. libcamera 의 카메라 인덱스는 재부팅마다 바뀐다
+
+`cam -c1` 이 어제는 후면(ov8856)이었는데 재부팅 후 전면(ov02a10)이 됐다.
+async 서브디바이스 바인딩 순서에 따라 열거 순서가 달라진다. 스크립트에서는
+인덱스 대신 `cam --list` 가 출력하는 고정 ID 를 써야 한다.
+
+```sh
+cam -c "/base/soc/i2c@11009000/camera@10"   # 후면
+cam -c "/base/soc/i2c@11008000/camera@3d"   # 전면
+```
+
+## 10. MTISP 벤더 fourcc 는 enum_fmt 마다 커널 WARN 을 찍는다
+
+`Unknown pixelformat 0x3852424d` (= `"MBR8"`) 백트레이스가 카메라 열거
+때마다 20 여 회 쌓인다. `v4l2-ioctl.c` 의 `v4l_enum_fmt` 이 코어의 설명
+테이블에서 벤더 fourcc 를 못 찾아 내는 경고다. 동작에는 영향이 없다.

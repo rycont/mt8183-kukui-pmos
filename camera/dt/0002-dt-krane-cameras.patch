@@ -112,7 +112,7 @@ Krane (Lenovo IdeaPad Duet) has an OV8856 (rear, i2c2) and an OV02A10
  };
  
  &cros_ec {
-@@ -387,3 +473,51 @@
+@@ -387,3 +473,43 @@
  &sound {
  	compatible = "mediatek,mt8183_mt6358_ts3a227_max98357";
  };
@@ -148,14 +148,6 @@ Krane (Lenovo IdeaPad Duet) has an OV8856 (rear, i2c2) and an OV02A10
 +				clock-lanes = <0>;
 +				data-lanes = <1>;
 +				remote-endpoint = <&ov02a10_endpoint>;
-+			};
-+		};
-+
-+		port@4 {
-+			reg = <4>;
-+
-+			seninf_camisp_endpoint: endpoint {
-+				remote-endpoint = <&camisp_endpoint>;
 +			};
 +		};
 +	};

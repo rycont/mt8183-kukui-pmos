@@ -1,11 +1,13 @@
 Subject: arm64: dts: mt8183: add seninf and camisp nodes
 
 Add the CSI-2 receiver (seninf) and ISP Pass 1 (camisp) nodes. Both are
-disabled by default and enabled per board.
+disabled by default and enabled per board. The seninf-to-ISP link is a
+fixed internal connection, so it lives here rather than in board files;
+sensor ports 0-3 are filled in per board.
 
 --- a/arch/arm64/boot/dts/mediatek/mt8183.dtsi
 +++ b/arch/arm64/boot/dts/mediatek/mt8183.dtsi
-@@ -2293,6 +2293,48 @@
+@@ -2293,6 +2293,65 @@
  			#clock-cells = <1>;
  		};
  
@@ -49,6 +51,23 @@ disabled by default and enabled per board.
 +				 <&topckgen CLK_TOP_MUX_SENINF>;
 +			clock-names = "CLK_CAM_SENINF", "CLK_TOP_MUX_SENINF";
 +			status = "disabled";
++
++			ports {
++				#address-cells = <1>;
++				#size-cells = <0>;
++
++				/*
++				 * 센서 포트(0~3)는 보드 파일에서 채운다.
++				 * 포트 4 는 ISP 로 가는 고정 연결이므로 여기에 둔다.
++				 */
++				port@4 {
++					reg = <4>;
++
++					seninf_camisp_endpoint: endpoint {
++						remote-endpoint = <&camisp_endpoint>;
++					};
++				};
++			};
 +		};
 +
  		camsys: syscon@1a000000 {

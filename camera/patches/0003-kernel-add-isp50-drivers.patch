@@ -1241,8 +1241,8 @@ diff -urN a/drivers/media/platform/mediatek/isp/isp_50/cam/mtk_cam-regs.h b/driv
 +#endif	/* __MTK_CAM_REGS_H__ */
 diff -urN a/drivers/media/platform/mediatek/isp/isp_50/cam/mtk_cam.c b/drivers/media/platform/mediatek/isp/isp_50/cam/mtk_cam.c
 --- a/drivers/media/platform/mediatek/isp/isp_50/cam/mtk_cam.c	1970-01-01 09:00:00.000000000 +0900
-+++ b/drivers/media/platform/mediatek/isp/isp_50/cam/mtk_cam.c	2026-09-04 22:43:49.890646703 +0900
-@@ -0,0 +1,2458 @@
++++ b/drivers/media/platform/mediatek/isp/isp_50/cam/mtk_cam.c	2026-09-05 01:24:42.000000000 +0900
+@@ -0,0 +1,2476 @@
 +// SPDX-License-Identifier: GPL-2.0
 +// Copyright (c) 2019 MediaTek Inc.
 +
@@ -2710,6 +2710,24 @@ diff -urN a/drivers/media/platform/mediatek/isp/isp_50/cam/mtk_cam.c b/drivers/m
 +	format->format.field = V4L2_FIELD_NONE;
 +	*fmt = format->format;
 +
++	/*
++	 * seninf 로부터 들어오는 sink pad 포맷을 비디오 노드로 나가는
++	 * source pad 에 전파한다. 전파하지 않으면 libcamera 가 source
++	 * pad 에서 init_state 기본값만 읽어 센서 해상도가 무시된다.
++	 */
++	if (format->pad == MTK_CAM_CIO_PAD_SINK) {
++		unsigned int i;
++
++		for (i = MTK_CAM_P1_MAIN_STREAM_OUT;
++		     i <= MTK_CAM_P1_PACKED_BIN_OUT; i++) {
++			struct v4l2_mbus_framefmt *sfmt =
++				v4l2_subdev_state_get_format(state, i);
++
++			if (sfmt)
++				*sfmt = format->format;
++		}
++	}
++
 +	return 0;
 +}
 +
@@ -3972,8 +3990,8 @@ diff -urN a/drivers/media/platform/mediatek/isp/isp_50/seninf/Makefile b/drivers
 +obj-$(CONFIG_MTK_SENINF) += mtk_seninf.o
 diff -urN a/drivers/media/platform/mediatek/isp/isp_50/seninf/mtk_seninf.c b/drivers/media/platform/mediatek/isp/isp_50/seninf/mtk_seninf.c
 --- a/drivers/media/platform/mediatek/isp/isp_50/seninf/mtk_seninf.c	1970-01-01 09:00:00.000000000 +0900
-+++ b/drivers/media/platform/mediatek/isp/isp_50/seninf/mtk_seninf.c	2026-09-04 22:43:49.890180463 +0900
-@@ -0,0 +1,1025 @@
++++ b/drivers/media/platform/mediatek/isp/isp_50/seninf/mtk_seninf.c	2026-09-05 01:24:42.000000000 +0900
+@@ -0,0 +1,1042 @@
 +// SPDX-License-Identifier: GPL-2.0
 +
 +#include <linux/module.h>
@@ -4500,6 +4518,23 @@ diff -urN a/drivers/media/platform/mediatek/isp/isp_50/seninf/mtk_seninf.c b/dri
 +		priv->fmt[fmt->pad].format.code = fmt->format.code;
 +		priv->fmt[fmt->pad].format.width = fmt->format.width;
 +		priv->fmt[fmt->pad].format.height = fmt->format.height;
++	}
++
++	/*
++	 * V4L2 서브디바이스 규약상 sink pad 포맷은 source pad 로 전파해야
++	 * 한다. libcamera 는 sink 에 set 한 뒤 source 에서 get 하므로,
++	 * 전파하지 않으면 센서 해상도와 무관하게 기본값이 그대로 나간다.
++	 */
++	if (fmt->pad < NUM_SENSORS) {
++		unsigned int i;
++
++		for (i = CAM_MUX_IDX_MIN; i < NUM_PADS; i++) {
++			if (fmt->which == V4L2_SUBDEV_FORMAT_TRY)
++				*v4l2_subdev_state_get_format(sd_state, i) =
++					fmt->format;
++			else
++				priv->fmt[i].format = fmt->format;
++		}
 +	}
 +
 +	return 0;

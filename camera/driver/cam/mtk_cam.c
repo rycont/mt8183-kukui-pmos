@@ -1465,6 +1465,24 @@ static int mtk_cam_sd_set_fmt(struct v4l2_subdev *sd,
 	format->format.field = V4L2_FIELD_NONE;
 	*fmt = format->format;
 
+	/*
+	 * seninf 로부터 들어오는 sink pad 포맷을 비디오 노드로 나가는
+	 * source pad 에 전파한다. 전파하지 않으면 libcamera 가 source
+	 * pad 에서 init_state 기본값만 읽어 센서 해상도가 무시된다.
+	 */
+	if (format->pad == MTK_CAM_CIO_PAD_SINK) {
+		unsigned int i;
+
+		for (i = MTK_CAM_P1_MAIN_STREAM_OUT;
+		     i <= MTK_CAM_P1_PACKED_BIN_OUT; i++) {
+			struct v4l2_mbus_framefmt *sfmt =
+				v4l2_subdev_state_get_format(state, i);
+
+			if (sfmt)
+				*sfmt = format->format;
+		}
+	}
+
 	return 0;
 }
 
