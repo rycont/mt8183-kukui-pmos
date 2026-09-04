@@ -126,3 +126,36 @@ cam -c "/base/soc/i2c@11008000/camera@3d"   # 전면
 `Unknown pixelformat 0x3852424d` (= `"MBR8"`) 백트레이스가 카메라 열거
 때마다 20 여 회 쌓인다. `v4l2-ioctl.c` 의 `v4l_enum_fmt` 이 코어의 설명
 테이블에서 벤더 fourcc 를 못 찾아 내는 경고다. 동작에는 영향이 없다.
+
+## 11. 소프트웨어 ISP 에는 자동초점이 없다
+
+libcamera 0.7.1 의 `src/ipa/simple/algorithms/` 에는 `agc`, `awb`, `blc`,
+`ccm`, `adjust` 만 있다. AF 알고리즘이 없고, `simple` 파이프라인 핸들러
+소스에는 `focus`/`lens`/`vcm` 이라는 단어조차 나오지 않는다. 렌즈
+서브디바이스를 바인딩하지 않으므로 VCM 을 DT 에 연결해도 libcamera 는
+건드리지 않는다.
+
+DT 연결의 효과는 커널 쪽에 국한된다 — dw9768 이 `V4L2_CID_FOCUS_ABSOLUTE`
+를 노출하므로 `v4l2-ctl` 로 수동 초점을 맞출 수 있다. 자동으로 하려면
+초점을 훑으면서 선명도 피크를 찾는 대비검출 AF 를 유저스페이스에서 직접
+짜야 한다.
+
+## 12. 소프트 ISP 의 AGC 는 센서 헬퍼 없이는 게인을 못 올린다
+
+`CameraSensorHelper` 가 없으면 IPA 가 게인 레지스터 값과 실제 배율 사이를
+변환하지 못해 AGC 가 노출만 조절하고 게인은 최소값에 방치한다. 증상은
+`IPASoft: Failed to create camera sensor helper for <sensor>` 경고 한 줄과,
+`cam --list-controls` 에 `AnalogueGain`/`ExposureTime` 이 안 보이는 것이다.
+
+krane 에서는 60프레임을 돌려도 ov8856 이 이랬다:
+
+```
+exposure       max=2482   value=2482   ← 끝까지 올림
+analogue_gain  min=128    value=128    ← 손도 안 댐 (16배 미사용)
+```
+
+libcamera 0.7.1 에 등록된 OV 센서는 ov13858, ov2685, ov2740, ov4689,
+ov5640, ov5647, ov5670, ov5675, ov5693, ov64a40, ov8858, ov8865 뿐이라
+ov8856 과 ov02a10 은 직접 추가해야 한다. 둘 다 선형 매핑이고 배율 기준값은
+커널 드라이버에 있다 — ov8856 은 128 이 1x(최대 2047, 16x), ov02a10 은
+0x10 이 1x(최대 0xf8, 15.5x).

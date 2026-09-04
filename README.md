@@ -110,7 +110,10 @@ abuild -r
   로 동작한다. 색 정확도가 떨어진다.
 - ISP 의 `dip`(후처리) 단은 포팅하지 않았다. 디베이어·노이즈 저감은
   libcamera 의 소프트웨어 ISP 가 담당한다.
-- 후면 카메라는 AF(dw9768) 를 연결하지 않아 고정 초점이다.
+- 후면 카메라의 AF VCM(dw9768) 은 DT 에 연결했지만 **자동초점은 안 된다.**
+  libcamera 0.7.1 의 소프트웨어 ISP 에는 AF 알고리즘이 없고(`agc`, `awb`,
+  `blc`, `ccm`, `adjust` 뿐), `simple` 파이프라인 핸들러는 렌즈 서브디바이스를
+  붙이지도 않는다. 커널 쪽은 `V4L2_CID_FOCUS_ABSOLUTE` 로 수동 초점만 된다.
 - libcamera 의 카메라 인덱스는 재부팅마다 바뀐다. `cam -c1` 대신
   `cam --list` 가 주는 고정 ID 를 써야 한다.
 - 벤더 fourcc 때문에 카메라 열거 시 `Unknown pixelformat` 커널 WARN 이

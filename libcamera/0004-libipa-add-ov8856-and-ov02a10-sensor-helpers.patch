@@ -1,0 +1,49 @@
+Subject: [PATCH] libipa: add ov8856 and ov02a10 camera sensor helpers
+
+Without a CameraSensorHelper the soft ISP cannot convert between the
+sensor's analogue gain register value and a real gain multiplier, so
+its AGC never touches gain. On MT8183 Kukui this pinned ov8856 at
+gain 128 (1x) while pushing exposure to its maximum, leaving frames
+several stops underexposed in ordinary indoor light.
+
+Both sensors use a plain linear mapping, taken from the kernel drivers:
+ov8856 (drivers/media/i2c/ov8856.c) has OV8856_ANAL_GAIN_MIN 128 for
+1x up to 2047 (16x), and ov02a10 (drivers/media/i2c/ov02a10.c) has
+OV02A10_GAIN_MIN 0x10 for 1x up to 0xf8 (15.5x).
+
+--- a/src/ipa/libipa/camera_sensor_helper.cpp
++++ b/src/ipa/libipa/camera_sensor_helper.cpp
+@@ -653,6 +653,16 @@
+ };
+ REGISTER_CAMERA_SENSOR_HELPER("imx708", CameraSensorHelperImx708)
+ 
++class CameraSensorHelperOv02a10 : public CameraSensorHelper
++{
++public:
++	CameraSensorHelperOv02a10()
++	{
++		gain_ = AnalogueGainLinear{ 1, 0, 0, 16 };
++	}
++};
++REGISTER_CAMERA_SENSOR_HELPER("ov02a10", CameraSensorHelperOv02a10)
++
+ class CameraSensorHelperOv2685 : public CameraSensorHelper
+ {
+ public:
+@@ -753,6 +763,16 @@
+ };
+ REGISTER_CAMERA_SENSOR_HELPER("ov64a40", CameraSensorHelperOv64a40)
+ 
++class CameraSensorHelperOv8856 : public CameraSensorHelper
++{
++public:
++	CameraSensorHelperOv8856()
++	{
++		gain_ = AnalogueGainLinear{ 1, 0, 0, 128 };
++	}
++};
++REGISTER_CAMERA_SENSOR_HELPER("ov8856", CameraSensorHelperOv8856)
++
+ class CameraSensorHelperOv8858 : public CameraSensorHelper
+ {
+ public:
