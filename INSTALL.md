@@ -12,19 +12,21 @@ kukui 보드는 디스플레이 쪽은 그대로 동작할 가능성이 높지�
 
 ## 미리 만들어진 apk 로 설치
 
-[Releases](../../releases) 에서 받아 기기로 복사한 뒤:
+[Releases](https://github.com/rycont/mt8183-kukui-pmos/releases/latest) 에서 받아 기기로 복사한 뒤:
 
 ```sh
 sudo apk add --allow-untrusted \
     linux-postmarketos-mediatek-mt81-*.apk \
     device-google-kukui-*.apk \
     libcamera-*.apk libcamera-ipa-*.apk libcamera-tools-*.apk
-sudo mkinitfs
 sudo reboot
 ```
 
-`mkinitfs` 는 새 DTB 로 커널 파티션을 다시 만든다. 빠뜨리면 부팅은 되지만
-디스플레이·카메라 노드가 안 생긴다.
+`apk add` 가 `mkinitfs` 와 `boot-deploy` 를 자동으로 돌려 새 DTB 로 커널
+파티션을 다시 굽는다. 따로 칠 필요 없다.
+
+`--allow-untrusted` 가 필요한 이유는 로컬 abuild 키로 서명됐기 때문이다.
+받은 파일이 맞는지는 릴리스의 `SHA256SUMS.txt` 로 확인할 것.
 
 재부팅 후 확인:
 
@@ -75,10 +77,17 @@ libcamera 는 `temp/libcamera/APKBUILD` 에 `prepare()` 를 넣어
 
 ```sh
 pmbootstrap checksum linux-postmarketos-mediatek-mt81
+pmbootstrap checksum libcamera
 pmbootstrap build linux-postmarketos-mediatek-mt81 --arch aarch64 --force
 pmbootstrap build device-google-kukui --arch aarch64 --force
 pmbootstrap build libcamera --arch aarch64 --force
 ```
+
+`libcamera` 에는 소프트웨어 ISP 활성화 외에 ov8856·ov02a10 센서 헬퍼도
+넣어야 한다 — `libcamera/0004-libipa-add-ov8856-and-ov02a10-sensor-helpers.patch`
+참고. 이게 없으면 AGC 가 게인을 못 올려서 실내가 4스톱쯤 어둡다.
+
+`CONFIG_VIDEO_DW9768=m` 도 켜야 후면 AF VCM 이 잡힌다.
 
 결과물은 `~/.local/var/pmbootstrap/packages/v26.06/aarch64/` 에 생긴다.
 

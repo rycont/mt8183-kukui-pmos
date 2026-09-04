@@ -48,10 +48,11 @@ pmOS 순정 설치본에 apk 세 개를 얹으면 된다. 기기에서 빌드할
 자세한 내용은 [INSTALL.md](INSTALL.md).
 
 ```sh
-sudo apk add --allow-untrusted linux-postmarketos-mediatek-mt81-*.apk \
-    device-google-kukui-*.apk libcamera-*.apk
-sudo mkinitfs && sudo reboot
+sudo apk add --allow-untrusted *.apk && sudo reboot
 ```
+
+미리 만들어진 apk 는
+[Releases](https://github.com/rycont/mt8183-kukui-pmos/releases/latest) 에 있다.
 
 ## 구성
 
