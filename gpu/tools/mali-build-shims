@@ -6,8 +6,11 @@
 # flatpaks are not. The sources are the same; only the libc differs.
 set -e
 
-PREFIX=/opt/mali
+# $MALI_DESTDIR moves where the libraries are written; what they link against
+# and what ends up in DT_NEEDED is the soname, so staging is safe.
+PREFIX="$MALI_DESTDIR/opt/mali"
 SRC=/usr/share/mali-vendor-krane
+[ -d "$SRC" ] || SRC="$(dirname "$(readlink -f "$0")")"
 FLATPAK_SDK="${MALI_FLATPAK_SDK:-dev.zed.Zed}"
 
 build() {

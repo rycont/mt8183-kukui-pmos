@@ -1,0 +1,4 @@
+#!/bin/sh
+# Leaving the kbase device tree in place with the driver gone would take the
+# GPU away entirely: Panfrost will not bind to it either.
+exec mali-vendor-activate --revert

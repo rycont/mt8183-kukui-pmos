@@ -1,5 +1,5 @@
 #!/bin/sh
-# Put ARM's Mali userspace in place.
+# Assemble ARM's Mali userspace.
 #
 # The driver is under ARM's EULA and cannot be redistributed, and the only
 # Mali-G72 build for Linux is the one ChromeOS ships. So fetch a ChromeOS
@@ -8,9 +8,14 @@
 #   mali-vendor-setup                    download the image for this board
 #   mali-vendor-setup --image FILE       use a recovery .zip or .bin already here
 #   mali-vendor-setup --root DIR         use a ChromeOS root already mounted
+#   mali-vendor-setup --destdir DIR      stage into DIR instead of installing
 #
 # The image is around 2 GB compressed. It is read as it downloads and only the
 # root partition is written out, then removed once the driver has been copied.
+#
+# --destdir is how build-packages.sh uses this: everything lands under DIR with
+# the paths it will have once installed, and the package takes it from there.
+# Without it, the files go straight to / and the boot chain is switched over.
 set -e
 
 BOARD=kukui
@@ -18,26 +23,35 @@ INDEX=https://dl.google.com/dl/edgedl/chromeos/recovery/recovery.json
 PREFIX=/opt/mali
 GLIBC="$PREFIX/glibc"
 WORK="${MALI_WORKDIR:-/var/tmp/mali-vendor-setup}"
+SHARE=/usr/share/mali-vendor-krane
+[ -d "$SHARE" ] || SHARE="$(dirname "$(readlink -f "$0")")/../system"
 KEEP=0
 IMAGE=
 ROOT=
+DESTDIR=
 
 while [ $# -gt 0 ]; do
 	case "$1" in
-	--image) IMAGE="$2"; shift 2 ;;
-	--root)  ROOT="$2";  shift 2 ;;
-	--keep)  KEEP=1;     shift ;;
+	--image)   IMAGE="$2";   shift 2 ;;
+	--root)    ROOT="$2";    shift 2 ;;
+	--destdir) DESTDIR="$2"; shift 2 ;;
+	--keep)    KEEP=1;       shift ;;
 	-h|--help)
-		sed -n '2,12p' "$0" | sed 's/^# \{0,1\}//'
+		sed -n '2,17p' "$0" | sed 's/^# \{0,1\}//'
 		exit 0 ;;
 	*) echo "unknown argument: $1" >&2; exit 2 ;;
 	esac
 done
 
-[ "$(id -u)" = 0 ] || { echo "run as root" >&2; exit 1; }
+if [ "$(id -u)" = 0 ]; then
+	SUDO=
+else
+	[ -n "$DESTDIR" ] || { echo "run as root, or pass --destdir" >&2; exit 1; }
+	SUDO=sudo
+fi
 
 cleanup() {
-	[ -n "$MOUNTED" ] && umount "$MOUNTED" 2>/dev/null || true
+	[ -n "$MOUNTED" ] && $SUDO umount "$MOUNTED" 2>/dev/null || true
 	[ "$KEEP" = 1 ] || rm -rf "$WORK"
 }
 trap cleanup EXIT
@@ -73,7 +87,7 @@ if [ -z "$ROOT" ]; then
 	fi
 	ROOT="$WORK/root"
 	mkdir -p "$ROOT"
-	mount -o ro,loop "$PART" "$ROOT"
+	$SUDO mount -o ro,loop "$PART" "$ROOT"
 	MOUNTED="$ROOT"
 fi
 
@@ -84,18 +98,21 @@ echo "driver: $(basename "$BLOB")"
 # 2. Lay it out. musl takes the blob as it is; glibc refuses an object with
 #    DT_RELR relocations unless it declares the matching libc version, which
 #    the ChromeOS build -- targeting its own loader -- does not.
-install -d "$PREFIX/lib" "$PREFIX/egl" "$GLIBC/lib" \
-	"$PREFIX/share/vulkan/icd.d" "$GLIBC/share/vulkan/icd.d"
+#
+#    The paths inside the manifests are where the files will be at runtime;
+#    $DESTDIR only moves where they are written now.
+install -d "$DESTDIR$PREFIX/lib" "$DESTDIR$PREFIX/egl" "$DESTDIR$GLIBC/lib" \
+	"$DESTDIR$PREFIX/share/vulkan/icd.d" "$DESTDIR$GLIBC/share/vulkan/icd.d"
 
-install -m 0755 "$BLOB" "$PREFIX/lib/libmali.so"
-ln -sf libmali.so "$PREFIX/lib/libmali.so.0"
-mali-declare-dt-relr "$BLOB" "$GLIBC/lib/libmali.so"
-chmod 0755 "$GLIBC/lib/libmali.so"
-ln -sf libmali.so "$GLIBC/lib/libmali.so.0"
-ln -sf "$PREFIX/lib/libmali.so" "$PREFIX/egl/libGLESv2.so.2"
+install -m 0755 "$BLOB" "$DESTDIR$PREFIX/lib/libmali.so"
+ln -sf libmali.so "$DESTDIR$PREFIX/lib/libmali.so.0"
+mali-declare-dt-relr "$BLOB" "$DESTDIR$GLIBC/lib/libmali.so"
+chmod 0755 "$DESTDIR$GLIBC/lib/libmali.so"
+ln -sf libmali.so "$DESTDIR$GLIBC/lib/libmali.so.0"
+ln -sf "$PREFIX/lib/libmali.so" "$DESTDIR$PREFIX/egl/libGLESv2.so.2"
 
 for P in "$PREFIX" "$GLIBC"; do
-	cat > "$P/share/vulkan/icd.d/mali.json" <<-ICD
+	cat > "$DESTDIR$P/share/vulkan/icd.d/mali.json" <<-ICD
 	{
 	    "file_format_version": "1.0.0",
 	    "ICD": {
@@ -113,10 +130,11 @@ echo "fetching the WSI layer"
 mkdir -p "$WORK"
 curl -fsSL "$WSI_URL" -o "$WORK/wsi.so"
 for P in "$PREFIX" "$GLIBC"; do
-	install -Dm755 "$WORK/wsi.so" "$P/lib/libVkLayer_window_system_integration.so"
-	install -d "$P/share/vulkan/implicit_layer.d"
-	sed "s|@PREFIX@|$P|" /usr/share/mali-vendor-krane/wsi-layer.json.in \
-		> "$P/share/vulkan/implicit_layer.d/VkLayer_window_system_integration.json"
+	install -Dm755 "$WORK/wsi.so" \
+		"$DESTDIR$P/lib/libVkLayer_window_system_integration.so"
+	install -d "$DESTDIR$P/share/vulkan/implicit_layer.d"
+	sed "s|@PREFIX@|$P|" "$SHARE/wsi-layer.json.in" \
+		> "$DESTDIR$P/share/vulkan/implicit_layer.d/VkLayer_window_system_integration.json"
 done
 
 # 4. The blob calls std::__1::__hash_memory, which arrived in LLVM 20. Neither
@@ -134,44 +152,16 @@ for pkg in libc++1 libc++abi1; do
 			'./usr/lib/aarch64-linux-gnu/*.so.1.0'
 done
 for lib in libc++ libc++abi; do
-	install -Dm755 "$WORK/$lib.so.1.0" "$GLIBC/lib/$lib.so.1.0"
-	ln -sf "$lib.so.1.0" "$GLIBC/lib/$lib.so.1"
+	install -Dm755 "$WORK/$lib.so.1.0" "$DESTDIR$GLIBC/lib/$lib.so.1.0"
+	ln -sf "$lib.so.1.0" "$DESTDIR$GLIBC/lib/$lib.so.1"
 done
 
 # 5. The shim and the layer have to be built against whichever libc loads them.
-mali-build-shims
+MALI_DESTDIR="$DESTDIR" mali-build-shims
 
-# 6. Point the boot chain at the DTBs built for kbase. The kernel package
-#    installs both sets: the stock ones describe the GPU the way Panfrost wants
-#    it, and kbase refuses those.
-if [ -d /boot/dtbs/mediatek-mali ]; then
-	if ! grep -qs mediatek-mali /etc/deviceinfo; then
-		sed -i '/^deviceinfo_dtb=/d' /etc/deviceinfo
-		echo 'deviceinfo_dtb="mediatek-mali/mt8183-kukui*"' >> /etc/deviceinfo
-	fi
-	echo "rebuilding the boot partition for the kbase device tree"
-	mkinitfs
-else
-	echo "warning: /boot/dtbs/mediatek-mali is missing. kbase will not bind to" >&2
-	echo "         the stock device tree; install this project's kernel package" >&2
-	echo "         (pkgrel 4 or newer) and run this again." >&2
-fi
+[ -n "$DESTDIR" ] && exit 0
 
-# 7. Name Qt's scene graph backend. plasma-integration probes GL, and when the
-#    probe fails it pins the whole session to software rendering -- which draws
-#    no glyphs at all in the shell. This is written here rather than shipped in
-#    the package because until the driver is in place, asking for Vulkan breaks
-#    a working Panfrost session.
-if ! grep -qs SceneGraphBackend /etc/xdg/kdeglobals; then
-	printf '\n[QtQuickRendererSettings]\nSceneGraphBackend=vulkan\n' \
-		>> /etc/xdg/kdeglobals
-fi
-
-cat <<-DONE
-
-	Installed. Reboot to use it.
-
-	To go back to Panfrost: drop the deviceinfo_dtb line from /etc/deviceinfo
-	and the QtQuickRendererSettings group from /etc/xdg/kdeglobals, then run
-	mkinitfs. See /usr/share/doc/mali-vendor-krane/README.md.
-DONE
+# 6. Point the boot chain at the DTBs built for kbase, and name Qt's scene
+#    graph backend. When mali-vendor-setup is run with --destdir these are the
+#    package's job instead -- see mali-vendor-krane.post-install.
+mali-vendor-activate

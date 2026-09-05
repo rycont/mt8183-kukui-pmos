@@ -194,42 +194,36 @@ deviceinfo_dtb="mediatek-mali/mt8183-kukui*"
 
 ### 2. 유저스페이스
 
-패키지는 미리 빌드해두지 않는다 — 안에 든 게 스크립트와 C 소스뿐이라
-기기에서 만드는 편이 릴리스에 올려두는 것보다 짧다. 이 저장소를 기기에
-복사한 뒤:
+apk 는 파일을 깔고 부팅 설정을 바꾸는 것까지만 한다. 준비는 전부 빌드
+스크립트가 미리 해서 apk 안에 넣는다 — ChromeOS 복구 이미지에서 드라이버를
+꺼내고, WSI 레이어와 libc++ 를 받고, 심을 musl 과 glibc 양쪽으로 컴파일한다.
 
 ```sh
 cd gpu
-./build-packages.sh                       # abuild 없으면 alpine-sdk 를 깐다
+./build-packages.sh
 sudo apk add --allow-untrusted ~/packages/*/aarch64/mali-vendor-krane-*.apk
+sudo reboot
 ```
 
-드라이버 자체는 ARM EULA 라 패키지에 못 넣는다. G72 용 리눅스 빌드는 ChromeOS
-것뿐이므로 복구 이미지에서 꺼내온다:
+`build-packages.sh` 가 하는 일:
 
-```sh
-sudo mali-vendor-setup
-```
-
-ChromeOS 복구 이미지 목록에서 이 보드 것을 찾아 받는다(압축 2GB). **받으면서
-읽어 루트 파티션만 디스크에 쓰고**, 드라이버를 꺼낸 뒤 지운다. 이어서 WSI
-레이어와 libc++ 를 받고, 심을 컴파일하고, `/etc/deviceinfo` 를 kbase DTB 로
-돌린 뒤 `mkinitfs` 로 부트 파티션을 다시 굽는다.
-
-`apk add` 만으로 여기까지 하지 않는 이유는 이 단계가 2GB 를 내려받고 부트
-파티션을 다시 쓰기 때문이다. 패키지 설치가 조용히 할 일이 아니다. 이미 받아둔
-파일이 있으면 `--image <파일>`, 마운트해둔 ChromeOS 루트가 있으면 `--root <경로>`
-로 건너뛸 수 있다.
-
-같은 스크립트가 블롭 혼자서는 모자란 두 개도 같이 받아온다:
-
+- 복구 이미지를 받으면서 읽어 루트 파티션만 디스크에 쓰고, 드라이버를 꺼낸 뒤
+  지운다(압축 2GB). 이미 받아둔 파일이 있으면 `--image <파일>`, 마운트해둔
+  ChromeOS 루트가 있으면 `--root <경로>` 로 건너뛴다
 - `libVkLayer_window_system_integration.so`
-  ([ginkage/libmali-rockchip](https://github.com/ginkage/libmali-rockchip)).
-  블롭엔 `VK_KHR_wayland_surface` 가 없고, 이 레이어가 그 자리를 메운다.
-  GPU 와 무관한 코드라 Rockchip 배포본을 그대로 쓴다.
-- LLVM 20 이상의 `libc++` (Debian arm64 `libc++1`). 블롭이
-  `std::__1::__hash_memory` 를 쓰는데 그 이전 판엔 없다. flatpak 쪽
-  `/opt/mali/glibc/lib` 에 둔다.
+  ([ginkage/libmali-rockchip](https://github.com/ginkage/libmali-rockchip)) —
+  블롭엔 `VK_KHR_wayland_surface` 가 없고 이 레이어가 그 자리를 메운다.
+  GPU 와 무관한 코드라 Rockchip 배포본을 그대로 쓴다
+- LLVM 20 이상의 `libc++` (Debian arm64) — 블롭이 `std::__1::__hash_memory` 를
+  쓰는데 그 이전 판엔 없다
+- EGL 심·present 레이어·musl 심 컴파일. glibc 쪽은 기기에 있는 유일한 glibc
+  툴체인, 즉 flatpak 런타임 안에서 컴파일한다. flatpak 이 없으면 그 하나만
+  건너뛰고 경고한다 (flatpak 앱 가속만 빠지고 셸은 멀쩡하다)
+
+`apk add` 는 `/etc/deviceinfo` 를 kbase DTB 로 돌리고 `mkinitfs` 로 부트
+파티션을 다시 구운다. `apk del` 하면 그대로 되돌린다.
+
+**만들어진 apk 안에는 ARM 드라이버가 들어있다. EULA 라 남에게 주면 안 된다.**
 
 ### 3. 확인
 

@@ -1,23 +1,2 @@
 #!/bin/sh
-cat <<'MSG'
-
-mali-vendor-krane installed. Two things are still needed:
-
-  1. The driver itself. It is under ARM's EULA and cannot be shipped, and the
-     only Mali-G72 build for Linux is ChromeOS's. Fetch one:
-
-         sudo mali-vendor-setup
-
-     That downloads the recovery image for this board, reads it as it comes
-     and keeps only the root partition, then removes it again.
-
-  2. This project's kernel package, which carries the kbase module and a
-     second set of device tree blobs describing the GPU the way kbase wants
-     it. mali-vendor-setup switches /etc/deviceinfo over to them.
-
-Panfrost and kbase claim the same device tree node, so only one of them can be
-bound at a time. Going back is one line: drop the deviceinfo_dtb override and
-run mkinitfs.
-
-MSG
-exit 0
+exec mali-vendor-activate

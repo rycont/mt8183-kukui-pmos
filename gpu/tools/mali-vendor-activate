@@ -1,0 +1,40 @@
+#!/bin/sh
+# Switch the machine between the stock GPU stack and this one.
+#
+#   mali-vendor-activate            use kbase and the vendor driver
+#   mali-vendor-activate --revert   go back to Panfrost
+#
+# Two settings, both outside any package's files. The device tree, because
+# kbase and Panfrost describe the same GPU incompatibly and the kernel package
+# ships a set of DTBs for each; and Qt's scene graph backend, because
+# plasma-integration probes GL and pins the whole session to software rendering
+# when the probe fails -- which leaves the shell with no glyphs at all.
+set -e
+
+DTB='deviceinfo_dtb="mediatek-mali/mt8183-kukui*"'
+
+if [ "$1" = "--revert" ]; then
+	sed -i '/^deviceinfo_dtb=.*mediatek-mali/d' /etc/deviceinfo 2>/dev/null || true
+	sed -i '/^\[QtQuickRendererSettings\]$/,/^$/{/SceneGraphBackend=vulkan/d}' \
+		/etc/xdg/kdeglobals 2>/dev/null || true
+	mkinitfs
+	exit 0
+fi
+
+if [ -d /boot/dtbs/mediatek-mali ]; then
+	if ! grep -qs mediatek-mali /etc/deviceinfo; then
+		sed -i '/^deviceinfo_dtb=/d' /etc/deviceinfo
+		echo "$DTB" >> /etc/deviceinfo
+	fi
+	echo "rebuilding the boot partition for the kbase device tree"
+	mkinitfs
+else
+	echo "warning: /boot/dtbs/mediatek-mali is missing. kbase will not bind to" >&2
+	echo "         the stock device tree; install this project's kernel package" >&2
+	echo "         (pkgrel 4 or newer) and run mali-vendor-activate again." >&2
+fi
+
+if ! grep -qs SceneGraphBackend /etc/xdg/kdeglobals; then
+	printf '\n[QtQuickRendererSettings]\nSceneGraphBackend=vulkan\n' \
+		>> /etc/xdg/kdeglobals
+fi
