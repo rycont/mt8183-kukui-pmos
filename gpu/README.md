@@ -163,16 +163,68 @@ physical devices: 1
   Mali-G72  api=1.3.313  vendor=0x13b5  type=INTEGRATED_GPU
 ```
 
-### 남은 것 — 컴포지터
+### 화면에 그리기
 
 kbase 가 GPU 를 가져가면 `/dev/dri/renderD128` 이 사라진다. 남는 DRM 노드는
 디스플레이 컨트롤러(`mediatek-drm`) 뿐이라 Mesa 에 렌더 디바이스가 없고, KWin 이
-뜨지 못한다. Panfrost 와 kbase 는 공존할 수 없으므로 **데스크톱도 같이 옮겨야
-한다.**
+뜨지 못한다. Panfrost 와 kbase 는 공존할 수 없으니 데스크톱도 같이 옮겨야 한다.
 
-블롭은 `gbm_*` 을 내보내지 않는다 — libgbm 은 별도이고, ChromeOS 는 minigbm 을
-쓴다. 즉 KWin 을 Mali EGL 위에 올리려면 mediatek 백엔드를 가진 gbm 구현이
-필요하다. 클라이언트 쪽(Zed)은 위의 WSI 레이어로 이미 해결돼 있다.
+**KWin 은 이 위에 올릴 수 없다.** 블롭에 EGL 플랫폼이 하나도 없기 때문이다.
+
+| 시도 | 결과 |
+|---|---|
+| `eglGetPlatformDisplayEXT(GBM / DEVICE / SURFACELESS)` | 셋 다 `EGL_BAD_PARAMETER` |
+| `eglGetDisplay(gbm_device*)` (플랫폼 확장 이전의 경로) | `EGL_NO_DISPLAY`, 에러조차 세우지 않음 |
+| Vulkan `VK_KHR_display` (컴포지터 없이 KMS 직접 출력) | 없음. `VK_EXT_headless_surface` 뿐 |
+
+ChromeOS 는 Chrome 이 minigbm 으로 버퍼를 따로 할당해 오고 드라이버는 거기에
+그리기만 하므로, ARM 이 EGL 플랫폼을 넣을 이유가 없었다. 이건 설정이 아니라
+빌드에 없는 기능이다.
+
+대신 **wlroots 에는 Vulkan 렌더러가 있다.** 블롭이 내주는 게 정확히 Vulkan 이니,
+컴포지터(cage)와 클라이언트가 모두 벤더 드라이버 위에 올라간다.
+`tools/run-cage-mali.sh` 가 그 환경이다.
+
+### wlroots 에서 고친 것
+
+`patches/wlroots-vulkan-no-drm-node.diff` — 둘 다 GPU 가 DRM 밖에 있다는 한 가지
+사실에서 나온다.
+
+| 수정 | 이유 |
+|---|---|
+| `WLR_VK_PHYSICAL_DEVICE` 로 디바이스 지정 | wlroots 는 백엔드의 DRM 노드와 Vulkan 디바이스를 `VK_EXT_physical_device_drm` 으로 짝짓는다. `/dev/mali0` 은 DRM 노드가 아니라 그 확장을 원리상 못 채운다 |
+| 렌더러 DRM fd 를 백엔드 것으로 폴백 | fd 가 없으면 wlroots 가 `linux-dmabuf` 글로벌 자체를 만들지 않아, 클라이언트가 shm 으로 떨어진다 |
+
+두 번째를 고치자 컴포지터가 Mali 가 알려준 포맷 목록(AFBC 모디파이어 포함)을
+그대로 광고하기 시작했다.
+
+### dma-heap
+
+마지막 한 조각. WSI 레이어의 스왑체인 할당자는 `/dev/dma_heap/system` 을 열고,
+없으면 진단 한 줄 없이 `abort()` 한다. pmOS 커널은 `CONFIG_DMABUF_HEAPS_SYSTEM`
+없이 CMA 힙만 켜져 있다. 두 힙은 같은 ioctl 을 받으므로 이름만 걸어주면 된다.
+
+```sh
+ln -sf default_cma_region /dev/dma_heap/system
+chmod 0666 /dev/dma_heap/default_cma_region
+```
+
+제대로 하려면 `CONFIG_DMABUF_HEAPS_SYSTEM=y` 로 커널을 다시 빌드하는 쪽이다.
+CMA 는 물리적으로 연속된 메모리라 예약량을 넘기면 실패한다.
+
+### 결과
+
+```
+$ run-cage-mali.sh zed
+Selected GPU (passed configuration test): Mali-G72 (Vulkan)
+Using GPU: is_software_emulated: false, device_name: "Mali-G72",
+           driver_info: "v1.r54p1-12eac0.d6e444aeb29579d8c20656d21c96307d"
+
+BENCH frames=120 median=37.1ms p95=47.8ms fps=25.7      (1200x1920 전체화면)
+```
+
+Panfrost + KWin 은 같은 화소 수에서 33.3ms 였다. **공식 드라이버 쪽이 11% 느리다.**
+컴포지터가 달라 순수 비교는 아니지만, 어느 쪽이든 성능이 이 작업의 이유는 아니다.
 
 ## 되돌리기
 

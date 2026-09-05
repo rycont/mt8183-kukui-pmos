@@ -1,0 +1,38 @@
+diff --git a/render/vulkan/renderer.c b/render/vulkan/renderer.c
+index da17a47..c4b44d2 100644
+--- a/render/vulkan/renderer.c
++++ b/render/vulkan/renderer.c
+@@ -2618,6 +2618,13 @@ struct wlr_renderer *wlr_vk_renderer_create_with_drm_fd(int drm_fd) {
+ 	// Do not use the drm_fd that was passed in: we should prefer the render
+ 	// node even if a primary node was provided
+ 	dev->drm_fd = vulkan_open_phdev_drm_fd(phdev);
++	if (dev->drm_fd < 0 && drm_fd >= 0) {
++		// A device that reaches the GPU outside DRM has no node of its own to
++		// prefer. Without any fd the renderer cannot name a device, and the
++		// compositor then skips linux-dmabuf entirely, leaving clients on shm.
++		// Keep the backend's node so buffer sharing still has a device to name.
++		dev->drm_fd = fcntl(drm_fd, F_DUPFD_CLOEXEC, 0);
++	}
+ 
+ 	return vulkan_renderer_create_for_device(dev);
+ 
+diff --git a/render/vulkan/vulkan.c b/render/vulkan/vulkan.c
+index 0c0445d..b0f9a64 100644
+--- a/render/vulkan/vulkan.c
++++ b/render/vulkan/vulkan.c
+@@ -345,7 +345,14 @@ VkPhysicalDevice vulkan_find_drm_phdev(struct wlr_vk_instance *ini, int drm_fd)
+ 		}
+ 
+ 		bool found;
+-		if (drm_fd >= 0) {
++		const char *forced = getenv("WLR_VK_PHYSICAL_DEVICE");
++		if (forced != NULL) {
++			// A driver that reaches the GPU outside DRM -- ARM's Mali kbase
++			// stack talks to /dev/mali0 -- has no DRM node to report through
++			// VK_EXT_physical_device_drm, and so can never be matched against
++			// the backend's device. Let the device be named instead.
++			found = strstr(phdev_props.deviceName, forced) != NULL;
++		} else if (drm_fd >= 0) {
+ 			if (!has_drm_props) {
+ 				wlr_log(WLR_DEBUG, "  Ignoring physical device \"%s\": "
+ 					"VK_EXT_physical_device_drm not supported",
