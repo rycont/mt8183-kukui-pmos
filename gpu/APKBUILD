@@ -9,7 +9,7 @@ license="MIT"
 # The driver is loaded at startup rather than dlopened, because musl only grants
 # initial-exec TLS to libraries present from the beginning; gcompat supplies the
 # glibc symbols it asks for, and it wants a libc++ of its own.
-depends="gcompat libc++ mesa-gbm python3 vulkan-loader"
+depends="curl gcompat libarchive-tools libc++ mesa-gbm python3 vulkan-loader"
 makedepends="vulkan-headers"
 install="$pkgname.post-install"
 source="
@@ -17,6 +17,7 @@ source="
 	tools/vk-present-sync-layer.c
 	tools/cros-mali-shim.c
 	tools/declare-dt-relr.py
+	tools/mali-extract-root.py
 	tools/mali-vendor-setup
 	tools/mali-build-shims
 	system/99-mali-dma-heap.rules
@@ -48,6 +49,7 @@ package() {
 	install -Dm755 "$(src tools/mali-vendor-setup)" "$pkgdir/usr/bin/mali-vendor-setup"
 	install -Dm755 "$(src tools/mali-build-shims)" "$pkgdir/usr/bin/mali-build-shims"
 	install -Dm755 "$(src tools/declare-dt-relr.py)" "$pkgdir/usr/bin/mali-declare-dt-relr"
+	install -Dm755 "$(src tools/mali-extract-root.py)" "$pkgdir/usr/bin/mali-extract-root"
 
 	install -Dm644 "$(src system/99-mali-dma-heap.rules)" \
 		"$pkgdir/usr/lib/udev/rules.d/99-mali-dma-heap.rules"

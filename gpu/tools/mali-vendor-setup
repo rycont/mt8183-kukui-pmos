@@ -1,48 +1,98 @@
 #!/bin/sh
-# Put ARM's Mali userspace in place. The blob is under ARM's EULA and cannot be
-# redistributed, so it has to come from a ChromeOS image -- the only place a
-# Mali-G72 build for Linux exists. Point this at a mounted ChromeOS root
-# partition (the recovery image's ROOT-A).
+# Put ARM's Mali userspace in place.
 #
-#   mali-vendor-setup /run/media/$USER/ROOT-A
+# The driver is under ARM's EULA and cannot be redistributed, and the only
+# Mali-G72 build for Linux is the one ChromeOS ships. So fetch a ChromeOS
+# recovery image and take it from there.
 #
-# Everything else -- the shim, the layer, the manifests -- the package already
-# installed.
+#   mali-vendor-setup                    download the image for this board
+#   mali-vendor-setup --image FILE       use a recovery .zip or .bin already here
+#   mali-vendor-setup --root DIR         use a ChromeOS root already mounted
+#
+# The image is around 2 GB compressed. It is read as it downloads and only the
+# root partition is written out, then removed once the driver has been copied.
 set -e
 
-SRC="$1"
+BOARD=kukui
+INDEX=https://dl.google.com/dl/edgedl/chromeos/recovery/recovery.json
 PREFIX=/opt/mali
 GLIBC="$PREFIX/glibc"
+WORK="${MALI_WORKDIR:-/var/tmp/mali-vendor-setup}"
+KEEP=0
+IMAGE=
+ROOT=
 
-usage() {
-	cat >&2 <<-USAGE
-	usage: mali-vendor-setup <chromeos-root>
+while [ $# -gt 0 ]; do
+	case "$1" in
+	--image) IMAGE="$2"; shift 2 ;;
+	--root)  ROOT="$2";  shift 2 ;;
+	--keep)  KEEP=1;     shift ;;
+	-h|--help)
+		sed -n '2,12p' "$0" | sed 's/^# \{0,1\}//'
+		exit 0 ;;
+	*) echo "unknown argument: $1" >&2; exit 2 ;;
+	esac
+done
 
-	  <chromeos-root>  a mounted ChromeOS ROOT-A partition, holding
-	                   usr/lib64/libmali.so.*
+[ "$(id -u)" = 0 ] || { echo "run as root" >&2; exit 1; }
 
-	The WSI layer is a separate download; see the README.
-	USAGE
-	exit 2
+cleanup() {
+	[ -n "$MOUNTED" ] && umount "$MOUNTED" 2>/dev/null || true
+	[ "$KEEP" = 1 ] || rm -rf "$WORK"
+}
+trap cleanup EXIT
+
+recovery_url() {
+	echo "looking up the latest $BOARD recovery image" >&2
+	curl -fsSL --compressed "$INDEX" | python3 -c '
+import json, sys
+board = sys.argv[1]
+images = [e for e in json.load(sys.stdin) if board in e.get("file", "")]
+if not images:
+    sys.exit(f"no recovery image listed for {board}")
+newest = max(images, key=lambda e: [int(n) for n in e["version"].split(".")])
+print(newest["url"])
+print(newest["version"], file=sys.stderr)
+' "$BOARD"
 }
 
-[ -n "$SRC" ] || usage
-BLOB=$(ls "$SRC"/usr/lib64/libmali.so.* 2>/dev/null | head -1) || true
-[ -n "$BLOB" ] || { echo "no libmali under $SRC/usr/lib64" >&2; usage; }
+# 1. Get at a ChromeOS root filesystem, one way or another.
+if [ -z "$ROOT" ]; then
+	mkdir -p "$WORK"
+	PART="$WORK/root.img"
+	if [ -n "$IMAGE" ]; then
+		case "$IMAGE" in
+		*.zip) bsdtar -xOf "$IMAGE" '*.bin' ;;
+		*)     cat "$IMAGE" ;;
+		esac | mali-extract-root "$PART"
+	else
+		URL=$(recovery_url)
+		echo "downloading $URL" >&2
+		curl -fL --progress-bar "$URL" | bsdtar -xOf - '*.bin' |
+			mali-extract-root "$PART"
+	fi
+	ROOT="$WORK/root"
+	mkdir -p "$ROOT"
+	mount -o ro,loop "$PART" "$ROOT"
+	MOUNTED="$ROOT"
+fi
 
-echo "blob: $BLOB"
+BLOB=$(ls "$ROOT"/usr/lib64/libmali.so.* 2>/dev/null | head -1) || true
+[ -n "$BLOB" ] || { echo "no libmali under $ROOT/usr/lib64" >&2; exit 1; }
+echo "driver: $(basename "$BLOB")"
+
+# 2. Lay it out. musl takes the blob as it is; glibc refuses an object with
+#    DT_RELR relocations unless it declares the matching libc version, which
+#    the ChromeOS build -- targeting its own loader -- does not.
 install -d "$PREFIX/lib" "$PREFIX/egl" "$GLIBC/lib" \
 	"$PREFIX/share/vulkan/icd.d" "$GLIBC/share/vulkan/icd.d"
 
-# The musl loader has no opinion about DT_RELR, so it takes the blob as it is.
 install -m 0755 "$BLOB" "$PREFIX/lib/libmali.so"
 ln -sf libmali.so "$PREFIX/lib/libmali.so.0"
-
-# glibc refuses an object with DT_RELR relocations unless it declares the
-# matching libc version. The ChromeOS build targets its own loader and does not.
 mali-declare-dt-relr "$BLOB" "$GLIBC/lib/libmali.so"
 chmod 0755 "$GLIBC/lib/libmali.so"
 ln -sf libmali.so "$GLIBC/lib/libmali.so.0"
+ln -sf "$PREFIX/lib/libmali.so" "$PREFIX/egl/libGLESv2.so.2"
 
 for P in "$PREFIX" "$GLIBC"; do
 	cat > "$P/share/vulkan/icd.d/mali.json" <<-ICD
@@ -56,22 +106,21 @@ for P in "$PREFIX" "$GLIBC"; do
 	ICD
 done
 
-# Compositors reach the driver under the name they link against.
-ln -sf "$PREFIX/lib/libmali.so" "$PREFIX/egl/libGLESv2.so.2"
+# 3. The shim and the layer have to be built against whichever libc loads them.
 mali-build-shims
 
 cat <<-DONE
 
 	Installed. Still needed before this works:
 
-	  * the WSI layer, which supplies VK_KHR_wayland_surface --
-	    libVkLayer_window_system_integration.so from
-	    https://github.com/ginkage/libmali-rockchip (GPU-independent),
-	    into $PREFIX/lib and $GLIBC/lib
+	  * the WSI layer, which supplies the VK_KHR_wayland_surface the blob
+	    lacks -- libVkLayer_window_system_integration.so from
+	    https://github.com/ginkage/libmali-rockchip, which is
+	    GPU-independent -- into $PREFIX/lib and $GLIBC/lib
 	  * a libc++ of LLVM 20 or newer in $GLIBC/lib, for the blob's
 	    std::__1::__hash_memory
-	  * SceneGraphBackend=vulkan in kdeglobals, so Qt does not fall back
-	    to software rendering
+	  * SceneGraphBackend=vulkan in kdeglobals, so Qt does not fall back to
+	    software rendering
 
 	See /usr/share/doc/mali-vendor-krane/README.md.
 DONE

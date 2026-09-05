@@ -4,10 +4,12 @@ cat <<'MSG'
 mali-vendor-krane installed. Two things are still needed:
 
   1. The driver itself. It is under ARM's EULA and cannot be shipped, and the
-     only Mali-G72 build for Linux is ChromeOS's. Mount a ChromeOS recovery
-     image and run:
+     only Mali-G72 build for Linux is ChromeOS's. Fetch one:
 
-         mali-vendor-setup /path/to/ROOT-A
+         sudo mali-vendor-setup
+
+     That downloads the recovery image for this board, reads it as it comes
+     and keeps only the root partition, then removes it again.
 
   2. A kernel with the Mali kbase driver and a "system" dma-heap, and the GPU
      device tree node kbase expects. See

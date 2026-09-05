@@ -183,11 +183,16 @@ sudo apk add --allow-untrusted mali-vendor-krane-*.apk
 ```
 
 드라이버 자체는 ARM EULA 라 패키지에 못 넣는다. G72 용 리눅스 빌드는 ChromeOS
-것뿐이므로 복구 이미지에서 꺼내야 한다:
+것뿐이므로 복구 이미지에서 꺼내온다:
 
 ```sh
-sudo mali-vendor-setup /run/media/$USER/ROOT-A
+sudo mali-vendor-setup
 ```
+
+ChromeOS 복구 이미지 목록에서 이 보드 것을 찾아 받는다(압축 2GB). **받으면서
+읽어 루트 파티션만 디스크에 쓰고**, 드라이버를 꺼낸 뒤 지운다. 이미 받아둔
+파일이 있으면 `--image <파일>`, 마운트해둔 ChromeOS 루트가 있으면 `--root <경로>`
+로 건너뛸 수 있다.
 
 여기에 두 가지를 더 넣어야 한다 — 스크립트가 끝에 다시 알려준다:
 
