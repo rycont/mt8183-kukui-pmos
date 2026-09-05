@@ -225,6 +225,62 @@ chmod 0666 /dev/dma_heap/default_cma_region
 제대로 하려면 `CONFIG_DMABUF_HEAPS_SYSTEM=y` 로 커널을 다시 빌드하는 쪽이다.
 CMA 는 물리적으로 연속된 메모리라 예약량을 넘기면 실패한다.
 
+### EGL 셔틀 — KWin 을 올리려는 시도
+
+블롭의 EGL 은 **완전히 동작한다.** 없는 것은 EGL 이 아니라 EGL 이 물려 있는
+윈도우 시스템이다. 확인 결과 ARM 의 **dummy** winsys 였다 — `EGLNativeWindowType`
+이 `struct { unsigned short width, height; }` 뿐이고, 그걸 넘기면 창 서피스가
+정상적으로 만들어진다. 앞서 `gbm_surface` 를 넘겼을 때 `EGL_BAD_NATIVE_WINDOW` 가
+아니라 `EGL_BAD_ALLOC` 이 났던 이유가 이것이다: 포인터를 검증하지 않고 앞 4바이트를
+width/height 로 읽었다.
+
+ChromeOS 도 이 winsys 를 쓰지 않는다. `libEGL.so.1` 은 `dlopen("libmali.so")` 후
+`dlsym` 으로 넘기기만 하는 53KB 트램펄린이고(`libGLESv2`, `libGLESv1_CM` 도 같다),
+`libgbm.so.1` 은 minigbm 이며, 둘을 잇는 코드는 Chrome 바이너리 안에
+`GbmSurfaceless` 로 컴파일되어 있다. 이미지 어디에도 재사용 가능한 번역층은 없다.
+
+그런데 KWin 은 `gbm_surface` 를 쓰지 않는다. 맨 `gbm_bo` 를 할당해
+`EGL_LINUX_DMA_BUf_EXT` 로 import 하고 FBO 에 그린 뒤 직접 page-flip 한다 — 블롭이
+전부 지원하는 동작이다. 그래서 빠진 것은 디스플레이 핸들 하나뿐이고,
+`tools/egl-gbm-shim.c` 가 그것을 메운다.
+
+| 필요한 것 | 확인 |
+|---|---|
+| gbm 버퍼 할당 | Mesa libgbm 으로 됨. minigbm 은 `MTK_GEM_CREATE` 가 ChromeOS 다운스트림 ioctl 이라 메인라인에서 `EINVAL` |
+| dma-buf → EGLImage → FBO → 렌더 | **실측**: 256x256 버퍼에 GL 로 칠한 색이 그대로 읽힘 |
+| dma-buf import 포맷 | 39개 (`XR24`/`XB24` 포함) |
+| `EGL_KHR_no_config_context` / `surfaceless_context` | 있음 |
+| `EGL_ANDROID_native_fence_sync` / `KHR_wait_sync` | 있음 |
+| `EGL_EXT_buffer_age` | 없음 (KWin 에선 선택 사항) |
+
+셔틀이 채우는 것은 두 가지다. `EGL_PLATFORM_GBM_KHR` 로 온 요청을 기본 디스플레이로
+바꿔 넘기고(클라이언트 확장 문자열에 그 이름도 걸어야 한다 — KWin 은 부르기 전에
+확인한다), `EGL_EXT_device_query` 에 답해 디스플레이 컨트롤러 노드를 알려준다.
+GPU 가 DRM 밖에 있어 원리상 대답할 수 없는 질문이라, 버퍼가 실제로 오는 곳을 대신
+알려주는 것이다.
+
+여기까지 하면 KWin 이 **EGL 을 초기화하고 GLES 컨텍스트를 만든다.**
+
+```
+kwin_scene_opengl: Egl Initialize succeeded
+kwin_scene_opengl: EGL version: 1.5
+kwin_scene_opengl: Created EGL context with attributes: ...
+kwin_core: Could not fulfill the requested compositing mode. Exiting.
+```
+
+마지막 줄이 남은 벽이다. 컨텍스트 생성 뒤 아무 메시지 없이 백엔드가 실패한다.
+확장도 포맷도 갖춰져 있으니 로그를 남기지 않는 early-return 이고, 여기서부터는
+pmOS 가 패키징한 KWin 스냅샷과 같은 소스가 있어야 짚을 수 있다.
+
+**셔틀을 쓰려면** `libEGL.so.1` 자리에 있어야 한다. KWin 은 libepoxy 로
+`dlopen("libEGL.so.1")` 후 핸들에 `dlsym` 하므로 `LD_PRELOAD` 로는 가로채지지 않는다.
+libmali 를 `DT_NEEDED` 로 걸어두면 나머지 함수는 의존성 사슬에서 해결된다.
+
+```sh
+gcc -shared -fPIC -Wl,-soname,libEGL.so.1 -o libEGL.so.1 egl-gbm-shim.c \
+    -Wl,--no-as-needed /opt/mali/lib/libmali.so -ldl
+```
+
 ### 결과
 
 ```

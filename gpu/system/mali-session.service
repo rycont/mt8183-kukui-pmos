@@ -1,0 +1,39 @@
+[Unit]
+Description=Zed on the Mali stack
+Documentation=https://github.com/rycont/mt8183-kukui-pmos
+
+# Replaces the getty on tty1, and the desktop that cannot run on this driver.
+Conflicts=getty@tty1.service plasma-mobile.service
+After=getty@tty1.service
+After=rc-local.service systemd-user-sessions.service seatd.service
+Wants=seatd.service
+OnFailure=getty@tty1.service
+
+Wants=dbus.socket
+After=dbus.socket
+Before=graphical.target
+ConditionPathExists=/dev/tty0
+
+[Service]
+Environment=LANG=C.UTF-8
+Environment=XDG_SEAT=seat0
+Environment=XDG_VTNR=tty1
+ExecStart=/usr/local/bin/run-cage-mali.sh /usr/local/bin/zed-mali.sh
+User=user
+PAMName=login
+WorkingDirectory=~
+Restart=always
+RestartSec=5s
+
+TTYPath=/dev/tty1
+TTYReset=yes
+TTYVHangup=yes
+TTYVTDisallocate=yes
+StandardInput=tty-fail
+StandardOutput=journal
+StandardError=journal
+UtmpIdentifier=tty1
+UtmpMode=user
+
+[Install]
+Alias=display-manager.service
