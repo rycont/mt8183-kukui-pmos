@@ -1,0 +1,14 @@
+--- pmk/linux-6.18.28/drivers/dma-buf/heaps/system_heap.c	2026-05-08 15:40:23.000000000 +0900
++++ sysheap/system_heap.c	2026-09-05 20:59:36.172665376 +0900
+@@ -426,3 +426,11 @@
+ 	return 0;
+ }
+ module_init(system_heap_create);
++
++/* Built out of tree so the heap can be added to a kernel compiled without
++   CONFIG_DMABUF_HEAPS_SYSTEM. dma_heap_add() lives in a symbol namespace. */
++MODULE_IMPORT_NS("DMA_BUF_HEAP");
++MODULE_IMPORT_NS("DMA_BUF");
++MODULE_DESCRIPTION("System dma-buf heap");
++MODULE_LICENSE("GPL v2");
++

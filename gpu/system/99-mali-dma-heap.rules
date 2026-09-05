@@ -1,5 +1,5 @@
-# ARM's Vulkan WSI layer allocates swapchain buffers from a dma-heap it expects
-# to be called "system", and abort()s without a word when the open fails. This
-# kernel is built with only the CMA heap, which takes the same ioctls, so give
-# it that name. The group has to match whoever runs the compositor.
-SUBSYSTEM=="dma_heap", KERNEL=="default_cma_region", SYMLINK+="dma_heap/system", GROUP="video", MODE="0660"
+# ARM's Vulkan WSI layer allocates swapchain buffers from the "system" dma-heap,
+# and abort()s without a word when it cannot open one. The kernel here is built
+# without CONFIG_DMABUF_HEAPS_SYSTEM, so the heap comes from an out-of-tree
+# module; see patches/system-heap-as-module.diff.
+SUBSYSTEM=="dma_heap", GROUP="video", MODE="0660"

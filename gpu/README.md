@@ -290,6 +290,60 @@ gcc -shared -fPIC -Wl,-soname,libEGL.so.1 -o libEGL.so.1 egl-gbm-shim.c \
 SONAME 이 `libmali.so.0` 이므로 그 이름의 심볼릭 링크가 있어야 한다.
 `system/plasma-mobile-mali.conf` 가 세션에 필요한 환경을 담고 있다.
 
+### 클라이언트도 옮기기
+
+컴포지터가 벤더 드라이버 위에 서도 클라이언트는 따라오지 못한다. 블롭에 Wayland
+EGL 플랫폼이 없어서다. Qt 는 Vulkan 이라는 다른 문이 있어 넘어갈 수 있지만, 그
+문은 KDE 설정으로만 열린다. `plasma-integration` 이 모든 KDE 앱 시작 시
+`QOpenGLContext::create()` 로 GL 을 찔러보고, 실패하면 세션 전체를 Qt Quick
+소프트웨어 백엔드로 못박기 때문이다. 백엔드를 명시하면 그 검사를 건너뛴다.
+
+```ini
+# ~/.config/kdeglobals
+[QtQuickRendererSettings]
+SceneGraphBackend=vulkan
+```
+
+소프트웨어 백엔드에서는 글자와 아이콘이 렌더되지 않는다. Vulkan 으로 넘기면
+그 문제가 사라지고 셸도 GPU 가속을 받는다. KWin 은 영향받지 않는다 — 자기
+`setGraphicsApi(OpenGL)` 로 나중에 덮어쓴다.
+
+GTK3 에는 이런 문이 없다. Wayland 에서 EGL 만 쓰므로 이 스택에서는 가속할 방법이
+없다.
+
+### 아무것도 프레임 완료를 알려주지 않는다
+
+세 겹이 모두 비어 있다.
+
+| 동기화 수단 | 상태 |
+|---|---|
+| dma-buf 암묵적 펜스 | kbase 는 DRM 드라이버가 아니다 |
+| `zwp_linux_explicit_synchronization_v1` | WSI 레이어는 알지만 KDE 가 Plasma 6 에서 버렸다 |
+| `linux-drm-syncobj-v1` | KWin 은 알지만 DRM 렌더 노드가 없어 켜지 못한다 |
+
+클라이언트가 바인드한 것을 보면 확인된다 — `zwp_linux_dmabuf_v1` 뿐이고 동기화
+관련 global 은 하나도 광고되지 않는다. 그래서 컴포지터가 GPU 가 아직 쓰고 있는
+버퍼를 합성한다. 프레임 시간 통계로는 잡히지 않는다: 60fps 를 지키고 드롭도 없는데
+**내용이 틀린다.** 키를 연달아 누르면 앞 키가 눌린 프레임이 표시되지 않고 두 키가
+함께 눌린 것처럼 보인다.
+
+`tools/vk-present-sync-layer.c` 가 그 공백을 메운다. 빠진 동기화를 되살리는 대신,
+프레젠트 직전에 큐를 비워 겹칠 수 없게 만든다.
+
+```c
+vkQueuePresentKHR(queue, info) {
+    vkQueueWaitIdle(queue);
+    return next_vkQueuePresentKHR(queue, info);
+}
+```
+
+WSI 레이어보다 앱 쪽에 놓여야 하고(그쪽이 스왑체인 프레젠트를 구현한다), musl 과
+glibc 양쪽에 각각 빌드해야 한다. 이걸로 입력 UI 의 어긋남은 사라진다.
+
+**남은 문제.** 셸의 제어센터는 여전히 같은 형상을 보인다 — 슬라이드 애니메이션이
+거의 끊겨 보이고, 토글의 색 변화가 한 프레임 앞질러 비쳤다 돌아온다. 스왑체인
+이미지를 늘려도(2 → 4) 달라지지 않았다. 원인 미상.
+
 ### 결과
 
 같은 화소 수(1920x1200, 2.30 Mpx)에서 Zed 를 재면:
@@ -298,11 +352,12 @@ SONAME 이 `libmali.so.0` 이므로 그 이름의 심볼릭 링크가 있어야 
 |---|---|
 | Panfrost + KWin | 33.3 ms |
 | cage (wlroots Vulkan 렌더러) + Mali | 37.1 ms |
-| **Plasma Mobile(KWin/GLES) + Mali** | **18.1 ms** (54 fps) |
+| **Plasma Mobile(KWin/GLES) + Mali** | **18.0~18.2 ms** (p95 27 ms) |
 
-**벤더 드라이버 쪽이 Panfrost 보다 1.8배 빠르다.** 앞서 cage 에서 37ms 가 나온 것은
-드라이버가 아니라 컴포지터 탓이었다 — wlroots 의 Vulkan 렌더러는 스스로 실험적이라
-밝히고 있고, 전체화면 창을 직접 스캔아웃하지 않는다.
+중앙값은 Panfrost 의 1.8 배지만 **p95 가 27ms 로 벌어져 있다** — 프레임이 고르지
+않다는 뜻이고, 위 동기화 문제와 같은 뿌리로 보인다. 앞서 cage 에서 37ms 가 나온
+것은 드라이버가 아니라 컴포지터 탓이었다: wlroots 의 Vulkan 렌더러는 스스로
+실험적이라 밝히고 있고 전체화면 창을 직접 스캔아웃하지 않는다.
 
 ## 되돌리기
 
