@@ -9,8 +9,10 @@ license="MIT"
 # The driver is loaded at startup rather than dlopened, because musl only grants
 # initial-exec TLS to libraries present from the beginning; gcompat supplies the
 # glibc symbols it asks for, and it wants a libc++ of its own.
-depends="curl gcompat libarchive-tools libc++ mesa-gbm python3 vulkan-loader"
-makedepends="vulkan-headers"
+# gcc and the Vulkan headers are runtime dependencies: the shim and the layer
+# are compiled on the device, once against musl and once inside a flatpak.
+depends="curl gcc gcompat libarchive-tools libc++ mesa-gbm musl-dev python3
+	vulkan-headers vulkan-loader"
 install="$pkgname.post-install"
 source="
 	tools/egl-gbm-shim.c
