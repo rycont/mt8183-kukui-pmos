@@ -141,6 +141,22 @@ done
 # 5. The shim and the layer have to be built against whichever libc loads them.
 mali-build-shims
 
+# 6. Point the boot chain at the DTBs built for kbase. The kernel package
+#    installs both sets: the stock ones describe the GPU the way Panfrost wants
+#    it, and kbase refuses those.
+if [ -d /boot/dtbs/mediatek-mali ]; then
+	if ! grep -qs mediatek-mali /etc/deviceinfo; then
+		sed -i '/^deviceinfo_dtb=/d' /etc/deviceinfo
+		echo 'deviceinfo_dtb="mediatek-mali/mt8183-kukui*"' >> /etc/deviceinfo
+	fi
+	echo "rebuilding the boot partition for the kbase device tree"
+	mkinitfs
+else
+	echo "warning: /boot/dtbs/mediatek-mali is missing. kbase will not bind to" >&2
+	echo "         the stock device tree; install this project's kernel package" >&2
+	echo "         (pkgrel 4 or newer) and run this again." >&2
+fi
+
 cat <<-DONE
 
 	Installed. One setting is still needed, and it is not one this package

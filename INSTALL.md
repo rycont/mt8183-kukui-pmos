@@ -146,35 +146,51 @@ Panfrost 대신 ARM 의 벤더 스택(kbase + libmali)으로 돌리는 경로다
 
 ### 1. 커널
 
-`linux-postmarketos-mediatek-mt81` 에 DT 패치를 넣고 dma-heap 을 켠다.
+kbase 모듈과 kbase 용 DTB 를 커널 패키지가 직접 만들게 한다. 손으로 넣어두면
+커널을 다시 깔 때마다 조용히 지워진다 — 실제로 한 번 당했다.
 
 ```sh
 PM=~/.local/var/pmbootstrap/cache_git/pmaports
 K=$PM/device/community/linux-postmarketos-mediatek-mt81
-cp gpu/dt/0001-dt-mali-kbase.patch $K/mt8183-kukui-mali-kbase.patch
+cp gpu/patches/kbase-6.12-to-6.18.diff  $K/mali-kbase-6.12-to-6.18.diff
+cp gpu/dt/mt8183-kukui-mali-kbase.diff  $K/
+patch -p1 -d $PM < gpu/pmaports-kernel-mali.patch
 ```
 
-`$K/APKBUILD` 의 `source=` 에 추가하고 `pkgrel` 을 올린 뒤,
-`config-postmarketos-mediatek-mt81.aarch64` 에서:
+위 "직접 빌드" 의 카메라·디스플레이 단계를 먼저 마친 상태여야 한다 —
+`source=` 문맥이 겹친다. `pkgrel` 도 하나 올려둘 것.
+
+`config-postmarketos-mediatek-mt81.aarch64` 에서 둘을 켠다:
 
 ```
 CONFIG_DMABUF_HEAPS_SYSTEM=y
+CONFIG_DEVFREQ_THERMAL=y
 ```
 
-이게 없으면 WSI 레이어가 스왑체인 버퍼를 잡을 힙을 못 찾아 아무 말 없이
+앞엣것이 없으면 WSI 레이어가 스왑체인 버퍼를 잡을 힙을 못 찾아 아무 말 없이
 `abort()` 한다. CMA 힙으로 대신하면 창이 몇 개만 열려도 128MB 를 다 쓴다.
-
-kbase 모듈은 커널 트리 밖에서 만든다:
+뒤엣것은 kbase 의 devfreq 쿨링이 요구한다.
 
 ```sh
-gpu/tools/fetch-kbase.sh kbase-src
-patch -p1 -d kbase-src < gpu/patches/kbase-6.12-to-6.18.diff
-gpu/tools/build-kbase.sh <커널트리> kbase-src
+pmbootstrap checksum linux-postmarketos-mediatek-mt81
+pmbootstrap build linux-postmarketos-mediatek-mt81 --arch aarch64 --force
 ```
 
-나온 `mali_kbase.ko` 를 기기의 `/lib/modules/$(uname -r)/extra/` 에 넣고
-`depmod -a`, `/etc/modules-load.d/` 에 등록한다. **커널 패키지를 다시 깔면
-지워지므로 그때마다 다시 넣어야 한다.**
+kbase 소스는 `source=` 가 알아서 받아온다 — ChromeOS 커널 트리의 사본을
+[릴리스](https://github.com/rycont/mt8183-kukui-pmos/releases/tag/kbase-r44p1)
+에 올려뒀다. 원본 URL 은 브랜치 머리를 그때그때 tar 로 말아주는 주소라
+바이트가 재현되지 않아 체크섬을 걸 수 없다.
+
+**DTB 는 두 벌이 깔린다.** kbase 와 Panfrost 는 같은 GPU 를 서로 맞지 않게
+기술한다 (`gpu/README.md` 의 표) — 그래서 순정 DTB 는 그대로 두고 kbase 용을
+`/boot/dtbs/mediatek-mali/` 에 따로 넣는다. 고르는 건 `/etc/deviceinfo` 한 줄:
+
+```
+deviceinfo_dtb="mediatek-mali/mt8183-kukui*"
+```
+
+`mali-vendor-setup` 이 이 줄을 쓰고 `mkinitfs` 까지 돌린다. Panfrost 로
+돌아가려면 그 줄을 지우고 `mkinitfs` 를 다시 돌리면 된다.
 
 ### 2. 유저스페이스
 

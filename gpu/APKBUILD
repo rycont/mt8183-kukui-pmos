@@ -21,6 +21,7 @@ source="
 	tools/mali-vendor-setup
 	tools/mali-build-shims
 	system/99-mali-dma-heap.rules
+	system/mali-kbase.conf
 	system/wsi-layer.json.in
 	system/plasma-mobile-mali.conf
 	README.md
@@ -54,6 +55,8 @@ package() {
 
 	install -Dm644 "$(src system/wsi-layer.json.in)" \
 		"$pkgdir/usr/share/$pkgname/wsi-layer.json.in"
+	install -Dm644 "$(src system/mali-kbase.conf)" \
+		"$pkgdir/usr/lib/modules-load.d/mali-kbase.conf"
 	install -Dm644 "$(src system/99-mali-dma-heap.rules)" \
 		"$pkgdir/usr/lib/udev/rules.d/99-mali-dma-heap.rules"
 	install -Dm644 "$(src system/plasma-mobile-mali.conf)" \

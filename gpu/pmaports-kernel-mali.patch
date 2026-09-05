@@ -1,0 +1,74 @@
+--- a/device/community/linux-postmarketos-mediatek-mt81/APKBUILD
++++ b/device/community/linux-postmarketos-mediatek-mt81/APKBUILD
+@@ -34,6 +34,14 @@
+ 
+ _carch="arm64"
+ 
++# ARM's kbase driver, for the proprietary Mali userspace. It is built out of
++# tree because ChromeOS is the only kernel that carries it, and it reads its
++# CONFIG_MALI_* options from the C preprocessor rather than from .config.
++_kbase="mali-kbase-r44p1"
++_kbasedefs="-DCONFIG_MALI=1 -DCONFIG_MALI_REAL_HW=1 -DCONFIG_MALI_DEVFREQ=1 \
++-DCONFIG_MALI_PLATFORM_NAME=\\\"mediatek\\\" -DCONFIG_MALI_GATOR_SUPPORT=1 \
++-DCONFIG_PAGE_MIGRATION_SUPPORT=0"
++
+ # Source
+ _config="config-$_flavor.$CARCH"
+ case $pkgver in
+@@ -56,20 +64,38 @@
+ 	mtk-isp50-drivers.patch
+ 	mt8183-dpi-raise-max-clock.patch
+ 	config-$_flavor.aarch64
++	$_kbase-6d5c34dd.tar.gz::https://github.com/rycont/mt8183-kukui-pmos/releases/download/kbase-r44p1/$_kbase-6d5c34dd.tar.gz
++	mali-kbase-6.12-to-6.18.diff
++	mt8183-kukui-mali-kbase.diff
+ "
+ builddir="$srcdir/linux-$_kernver"
+ 
+ prepare() {
+ 	default_prepare
+ 	cp "$srcdir/config-$_flavor.$CARCH" .config
++	patch -p1 -d "$srcdir/$_kbase" -i "$srcdir"/mali-kbase-6.12-to-6.18.diff
+ }
+ 
+ build() {
+ 	unset LDFLAGS
+ 
++	# kbase and Panfrost describe the same GPU incompatibly -- kbase steps the
++	# core and SRAM regulators itself, which the DT's regulator coupling
++	# forbids -- so build a second set of mt8183-kukui DTBs for it and leave
++	# the stock ones in place as the default.
++	patch -p1 -i "$srcdir"/mt8183-kukui-mali-kbase.diff
++	make ARCH="$_carch" LLVM=1 dtbs
++	mkdir -p "$srcdir"/dtbs-mali
++	cp arch/arm64/boot/dts/mediatek/mt8183-kukui*.dtb "$srcdir"/dtbs-mali/
++	patch -Rp1 -i "$srcdir"/mt8183-kukui-mali-kbase.diff
++
+ 	make ARCH="$_carch" LLVM=1 \
+ 		KBUILD_BUILD_VERSION="$((pkgrel + 1 ))-$_flavor"
+ 
++	make ARCH="$_carch" LLVM=1 M="$srcdir/$_kbase" modules \
++		CONFIG_MALI=m CONFIG_MALI_REAL_HW=y CONFIG_MALI_DEVFREQ=y \
++		CONFIG_MALI_PLATFORM_NAME=mediatek CONFIG_MALI_CSF_SUPPORT=n \
++		KCFLAGS="$_kbasedefs" KBUILD_MODPOST_WARN=1
+ }
+ 
+ package() {
+@@ -82,6 +108,17 @@
+ 		INSTALL_MOD_PATH="$pkgdir"/usr \
+ 		INSTALL_MOD_STRIP=1 \
+ 		INSTALL_DTBS_PATH="$pkgdir"/boot/dtbs
++	make modules_install \
++		ARCH="$_carch" \
++		LLVM=1 \
++		M="$srcdir/$_kbase" \
++		INSTALL_MOD_PATH="$pkgdir"/usr \
++		INSTALL_MOD_STRIP=1
++
++	# Selected with deviceinfo_dtb="mediatek-mali/mt8183-kukui*" in
++	# /etc/deviceinfo; see the mali-vendor-krane package.
++	cp -r "$srcdir"/dtbs-mali "$pkgdir"/boot/dtbs/mediatek-mali
++
+ 	rm -f "$pkgdir"/lib/modules/*/build "$pkgdir"/lib/modules/*/source
+ 
+ 	install -D "$builddir"/include/config/kernel.release \

@@ -1,6 +1,6 @@
-diff -ruN '--exclude=*.o' '--exclude=*.ko' '--exclude=.*' '--exclude=*.mod*' '--exclude=*.cmd' orig/Kbuild src/Kbuild
---- orig/Kbuild	2026-09-05 15:57:30.558000000 +0900
-+++ src/Kbuild	2026-09-05 16:26:58.073121344 +0900
+diff -ruN a/Kbuild b/Kbuild
+--- a/Kbuild	2026-09-05 23:02:09.319000000 +0900
++++ b/Kbuild	2026-09-05 23:05:48.420198628 +0900
 @@ -20,7 +20,13 @@
  
  # make $(src) as absolute path if it is not already, by prefixing $(srctree)
@@ -15,381 +15,9 @@ diff -ruN '--exclude=*.o' '--exclude=*.ko' '--exclude=.*' '--exclude=*.mod*' '--
  
  #
  # Prevent misuse when Kernel configurations are not present by default
-diff -ruN '--exclude=*.o' '--exclude=*.ko' '--exclude=.*' '--exclude=*.mod*' '--exclude=*.cmd' orig/Kbuild.orig src/Kbuild.orig
---- orig/Kbuild.orig	1970-01-01 09:00:00.000000000 +0900
-+++ src/Kbuild.orig	2026-09-05 16:26:21.872108388 +0900
-@@ -0,0 +1,248 @@
-+# SPDX-License-Identifier: GPL-2.0 WITH Linux-syscall-note
-+#
-+# (C) COPYRIGHT 2012-2023 ARM Limited. All rights reserved.
-+#
-+# This program is free software and is provided to you under the terms of the
-+# GNU General Public License version 2 as published by the Free Software
-+# Foundation, and any use by you of this program is subject to the terms
-+# of such GNU license.
-+#
-+# This program is distributed in the hope that it will be useful,
-+# but WITHOUT ANY WARRANTY; without even the implied warranty of
-+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-+# GNU General Public License for more details.
-+#
-+# You should have received a copy of the GNU General Public License
-+# along with this program; if not, you can access it online at
-+# http://www.gnu.org/licenses/gpl-2.0.html.
-+#
-+#
-+
-+# make $(src) as absolute path if it is not already, by prefixing $(srctree)
-+# This is to prevent any build issue due to wrong path.
-+src:=$(if $(patsubst /%,,$(src)),$(srctree)/$(src),$(src))
-+
-+#
-+# Prevent misuse when Kernel configurations are not present by default
-+# in out-of-tree builds
-+#
-+ifneq ($(CONFIG_ANDROID),n)
-+ifeq ($(CONFIG_GPU_TRACEPOINTS),n)
-+    $(error CONFIG_GPU_TRACEPOINTS must be set in Kernel configuration)
-+endif
-+endif
-+
-+ifeq ($(CONFIG_DMA_SHARED_BUFFER),n)
-+    $(error CONFIG_DMA_SHARED_BUFFER must be set in Kernel configuration)
-+endif
-+
-+ifeq ($(CONFIG_PM_DEVFREQ),n)
-+    $(error CONFIG_PM_DEVFREQ must be set in Kernel configuration)
-+endif
-+
-+ifeq ($(CONFIG_DEVFREQ_THERMAL),n)
-+    $(error CONFIG_DEVFREQ_THERMAL must be set in Kernel configuration)
-+endif
-+
-+ifeq ($(CONFIG_DEVFREQ_GOV_SIMPLE_ONDEMAND),n)
-+    $(error CONFIG_DEVFREQ_GOV_SIMPLE_ONDEMAND must be set in Kernel configuration)
-+endif
-+
-+ifeq ($(CONFIG_FW_LOADER), n)
-+    $(error CONFIG_FW_LOADER must be set in Kernel configuration)
-+endif
-+
-+ifeq ($(CONFIG_MALI_PRFCNT_SET_SELECT_VIA_DEBUG_FS), y)
-+    ifneq ($(CONFIG_DEBUG_FS), y)
-+        $(error CONFIG_MALI_PRFCNT_SET_SELECT_VIA_DEBUG_FS depends on CONFIG_DEBUG_FS to be set in Kernel configuration)
-+    endif
-+endif
-+
-+ifeq ($(CONFIG_MALI_FENCE_DEBUG), y)
-+    ifneq ($(CONFIG_SYNC_FILE), y)
-+        $(error CONFIG_MALI_FENCE_DEBUG depends on CONFIG_SYNC_FILE to be set in Kernel configuration)
-+    endif
-+endif
-+
-+#
-+# Configurations
-+#
-+
-+# Driver version string which is returned to userspace via an ioctl
-+MALI_RELEASE_NAME ?= '"r44p1-01eac0"'
-+# Set up defaults if not defined by build system
-+ifeq ($(CONFIG_MALI_DEBUG), y)
-+    MALI_UNIT_TEST = 1
-+    MALI_CUSTOMER_RELEASE ?= 0
-+else
-+    MALI_UNIT_TEST ?= 0
-+    MALI_CUSTOMER_RELEASE ?= 1
-+endif
-+MALI_COVERAGE ?= 0
-+
-+# Kconfig passes in the name with quotes for in-tree builds - remove them.
-+MALI_PLATFORM_DIR := $(shell echo $(CONFIG_MALI_PLATFORM_NAME))
-+
-+ifeq ($(CONFIG_MALI_CSF_SUPPORT),y)
-+    MALI_JIT_PRESSURE_LIMIT_BASE = 0
-+    MALI_USE_CSF = 1
-+else
-+    MALI_JIT_PRESSURE_LIMIT_BASE ?= 1
-+    MALI_USE_CSF ?= 0
-+endif
-+
-+
-+ifneq ($(CONFIG_MALI_KUTF), n)
-+    MALI_KERNEL_TEST_API ?= 1
-+else
-+    MALI_KERNEL_TEST_API ?= 0
-+endif
-+
-+# Experimental features (corresponding -D definition should be appended to
-+# ccflags-y below, e.g. for MALI_EXPERIMENTAL_FEATURE,
-+# -DMALI_EXPERIMENTAL_FEATURE=$(MALI_EXPERIMENTAL_FEATURE) should be appended)
-+#
-+# Experimental features must default to disabled, e.g.:
-+# MALI_EXPERIMENTAL_FEATURE ?= 0
-+MALI_INCREMENTAL_RENDERING_JM ?= 0
-+
-+#
-+# ccflags
-+#
-+ccflags-y = \
-+    -DMALI_CUSTOMER_RELEASE=$(MALI_CUSTOMER_RELEASE) \
-+    -DMALI_USE_CSF=$(MALI_USE_CSF) \
-+    -DMALI_KERNEL_TEST_API=$(MALI_KERNEL_TEST_API) \
-+    -DMALI_UNIT_TEST=$(MALI_UNIT_TEST) \
-+    -DMALI_COVERAGE=$(MALI_COVERAGE) \
-+    -DMALI_RELEASE_NAME=$(MALI_RELEASE_NAME) \
-+    -DMALI_JIT_PRESSURE_LIMIT_BASE=$(MALI_JIT_PRESSURE_LIMIT_BASE) \
-+    -DMALI_INCREMENTAL_RENDERING_JM=$(MALI_INCREMENTAL_RENDERING_JM) \
-+    -DMALI_PLATFORM_DIR=$(MALI_PLATFORM_DIR)
-+
-+
-+ifeq ($(KBUILD_EXTMOD),)
-+# in-tree
-+    ccflags-y +=-DMALI_KBASE_PLATFORM_PATH=../../$(src)/platform/$(CONFIG_MALI_PLATFORM_NAME)
-+else
-+# out-of-tree
-+    ccflags-y +=-DMALI_KBASE_PLATFORM_PATH=$(src)/platform/$(CONFIG_MALI_PLATFORM_NAME)
-+endif
-+
-+ccflags-y += \
-+    -I$(srctree)/include/linux \
-+    -I$(src) \
-+    -I$(src)/include \
-+    -I$(src)/platform/$(MALI_PLATFORM_DIR) \
-+    -I$(src)/../../../base \
-+    -I$(src)/../../../../include
-+
-+subdir-ccflags-y += $(ccflags-y)
-+
-+#
-+# Kernel Modules
-+#
-+obj-$(CONFIG_MALI) += mali_kbase.o
-+# CHROMIUM: we don't port arbitration/ to production
-+# obj-$(CONFIG_MALI_ARBITRATION) += ../arbitration/
-+obj-$(CONFIG_MALI_KUTF)    += tests/
-+
-+mali_kbase-y := \
-+    mali_kbase_cache_policy.o \
-+    mali_kbase_ccswe.o \
-+    mali_kbase_mem.o \
-+    mali_kbase_mem_migrate.o \
-+    mali_kbase_mem_pool_group.o \
-+    mali_kbase_native_mgm.o \
-+    mali_kbase_ctx_sched.o \
-+    mali_kbase_gpuprops.o \
-+    mali_kbase_pm.o \
-+    mali_kbase_config.o \
-+    mali_kbase_kinstr_prfcnt.o \
-+    mali_kbase_vinstr.o \
-+    mali_kbase_softjobs.o \
-+    mali_kbase_hw.o \
-+    mali_kbase_debug.o \
-+    mali_kbase_gpu_memory_debugfs.o \
-+    mali_kbase_mem_linux.o \
-+    mali_kbase_core_linux.o \
-+    mali_kbase_mem_profile_debugfs.o \
-+    mali_kbase_disjoint_events.o \
-+    mali_kbase_debug_mem_view.o \
-+    mali_kbase_debug_mem_zones.o \
-+    mali_kbase_debug_mem_allocs.o \
-+    mali_kbase_smc.o \
-+    mali_kbase_mem_pool.o \
-+    mali_kbase_mem_pool_debugfs.o \
-+    mali_kbase_debugfs_helper.o \
-+    mali_kbase_as_fault_debugfs.o \
-+    mali_kbase_regs_history_debugfs.o \
-+    mali_kbase_dvfs_debugfs.o \
-+    mali_power_gpu_frequency_trace.o \
-+    mali_kbase_trace_gpu_mem.o \
-+    mali_kbase_pbha.o
-+
-+mali_kbase-$(CONFIG_DEBUG_FS) += mali_kbase_pbha_debugfs.o
-+
-+mali_kbase-$(CONFIG_MALI_CINSTR_GWT) += mali_kbase_gwt.o
-+
-+mali_kbase-$(CONFIG_SYNC_FILE) += \
-+    mali_kbase_fence_ops.o \
-+    mali_kbase_sync_file.o \
-+    mali_kbase_sync_common.o
-+
-+mali_kbase-$(CONFIG_MALI_TRACE_POWER_GPU_WORK_PERIOD) += \
-+        mali_power_gpu_work_period_trace.o \
-+        mali_kbase_gpu_metrics.o
-+
-+ifneq ($(CONFIG_MALI_CSF_SUPPORT),y)
-+    mali_kbase-y += \
-+        mali_kbase_jm.o \
-+        mali_kbase_dummy_job_wa.o \
-+        mali_kbase_debug_job_fault.o \
-+        mali_kbase_event.o \
-+        mali_kbase_jd.o \
-+        mali_kbase_jd_debugfs.o \
-+        mali_kbase_js.o \
-+        mali_kbase_js_ctx_attr.o \
-+        mali_kbase_kinstr_jm.o
-+
-+    mali_kbase-$(CONFIG_SYNC_FILE) += \
-+        mali_kbase_fence_ops.o \
-+        mali_kbase_fence.o
-+endif
-+
-+
-+INCLUDE_SUBDIR = \
-+    $(src)/context/Kbuild \
-+    $(src)/debug/Kbuild \
-+    $(src)/device/Kbuild \
-+    $(src)/backend/gpu/Kbuild \
-+    $(src)/mmu/Kbuild \
-+    $(src)/tl/Kbuild \
-+    $(src)/hwcnt/Kbuild \
-+    $(src)/gpu/Kbuild \
-+    $(src)/thirdparty/Kbuild \
-+    $(src)/platform/$(MALI_PLATFORM_DIR)/Kbuild
-+
-+ifeq ($(CONFIG_MALI_CSF_SUPPORT),y)
-+    INCLUDE_SUBDIR += $(src)/csf/Kbuild
-+endif
-+
-+ifeq ($(CONFIG_MALI_ARBITER_SUPPORT),y)
-+    INCLUDE_SUBDIR += $(src)/arbiter/Kbuild
-+endif
-+
-+ifeq ($(CONFIG_MALI_DEVFREQ),y)
-+    ifeq ($(CONFIG_DEVFREQ_THERMAL),y)
-+        INCLUDE_SUBDIR += $(src)/ipa/Kbuild
-+    endif
-+endif
-+
-+ifeq ($(KBUILD_EXTMOD),)
-+# in-tree
-+    -include $(INCLUDE_SUBDIR)
-+else
-+# out-of-tree
-+    include $(INCLUDE_SUBDIR)
-+endif
-diff -ruN '--exclude=*.o' '--exclude=*.ko' '--exclude=.*' '--exclude=*.mod*' '--exclude=*.cmd' orig/Module.symvers src/Module.symvers
---- orig/Module.symvers	1970-01-01 09:00:00.000000000 +0900
-+++ src/Module.symvers	2026-09-05 16:59:56.951549468 +0900
-@@ -0,0 +1,116 @@
-+0x00000000	kbase_sync_single_for_device	mali_kbase	EXPORT_SYMBOL	
-+0x00000000	kbase_sync_single_for_cpu	mali_kbase	EXPORT_SYMBOL	
-+0x00000000	kbase_region_tracker_find_region_enclosing_address	mali_kbase	EXPORT_SYMBOL	
-+0x00000000	kbase_region_tracker_find_region_base_address	mali_kbase	EXPORT_SYMBOL	
-+0x00000000	kbase_remove_va_region	mali_kbase	EXPORT_SYMBOL	
-+0x00000000	kbase_add_va_region	mali_kbase	EXPORT_SYMBOL	
-+0x00000000	kbase_mem_term	mali_kbase	EXPORT_SYMBOL	
-+0x00000000	kbase_alloc_free_region	mali_kbase	EXPORT_SYMBOL	
-+0x00000000	kbase_free_alloced_region	mali_kbase	EXPORT_SYMBOL	
-+0x00000000	kbase_gpu_mmap	mali_kbase	EXPORT_SYMBOL	
-+0x00000000	kbasep_find_enclosing_cpu_mapping_offset	mali_kbase	EXPORT_SYMBOL	
-+0x00000000	kbasep_find_enclosing_gpu_mapping_start_and_offset	mali_kbase	EXPORT_SYMBOL	
-+0x00000000	kbase_sync_now	mali_kbase	EXPORT_SYMBOL	
-+0x00000000	kbase_mem_free_region	mali_kbase	EXPORT_SYMBOL	
-+0x00000000	kbase_mem_free	mali_kbase	EXPORT_SYMBOL	
-+0x00000000	kbase_free_phy_pages_helper_locked	mali_kbase	EXPORT_SYMBOL	
-+0x00000000	kbase_mem_kref_free	mali_kbase	EXPORT_SYMBOL	
-+0x00000000	kbase_alloc_phy_pages	mali_kbase	EXPORT_SYMBOL	
-+0x00000000	kbase_gpu_vm_lock	mali_kbase	EXPORT_SYMBOL	
-+0x00000000	kbase_gpu_vm_unlock	mali_kbase	EXPORT_SYMBOL	
-+0x00000000	kbase_page_migration_enabled	mali_kbase	EXPORT_SYMBOL	
-+0x00000000	kbase_is_page_migration_enabled	mali_kbase	EXPORT_SYMBOL	
-+0x00000000	kbase_pm_context_active	mali_kbase	EXPORT_SYMBOL	
-+0x00000000	kbase_pm_context_idle	mali_kbase	EXPORT_SYMBOL	
-+0x00000000	kbasep_debug_assert_call_hook	mali_kbase	EXPORT_SYMBOL	
-+0x00000000	kbase_mem_alloc	mali_kbase	EXPORT_SYMBOL	
-+0x00000000	kbase_context_mmap	mali_kbase	EXPORT_SYMBOL	
-+0x00000000	kbase_vmap	mali_kbase	EXPORT_SYMBOL	
-+0x00000000	kbase_vunmap	mali_kbase	EXPORT_SYMBOL	
-+0x00000000	kbase_find_device	mali_kbase	EXPORT_SYMBOL	
-+0x00000000	kbase_release_device	mali_kbase	EXPORT_SYMBOL	
-+0x00000000	kbase_event_wakeup	mali_kbase	EXPORT_SYMBOL	
-+0x00000000	kbase_event_pending	mali_kbase	EXPORT_SYMBOL	
-+0x00000000	__tracepoint_mali_job_slots_event	mali_kbase	EXPORT_SYMBOL_GPL	
-+0x00000000	__traceiter_mali_job_slots_event	mali_kbase	EXPORT_SYMBOL_GPL	
-+0x00000000	__SCK__tp_func_mali_job_slots_event	mali_kbase	EXPORT_SYMBOL_GPL	
-+0x00000000	__tracepoint_mali_pm_status	mali_kbase	EXPORT_SYMBOL_GPL	
-+0x00000000	__traceiter_mali_pm_status	mali_kbase	EXPORT_SYMBOL_GPL	
-+0x00000000	__SCK__tp_func_mali_pm_status	mali_kbase	EXPORT_SYMBOL_GPL	
-+0x00000000	__tracepoint_mali_page_fault_insert_pages	mali_kbase	EXPORT_SYMBOL_GPL	
-+0x00000000	__traceiter_mali_page_fault_insert_pages	mali_kbase	EXPORT_SYMBOL_GPL	
-+0x00000000	__SCK__tp_func_mali_page_fault_insert_pages	mali_kbase	EXPORT_SYMBOL_GPL	
-+0x00000000	__tracepoint_mali_total_alloc_pages_change	mali_kbase	EXPORT_SYMBOL_GPL	
-+0x00000000	__traceiter_mali_total_alloc_pages_change	mali_kbase	EXPORT_SYMBOL_GPL	
-+0x00000000	__SCK__tp_func_mali_total_alloc_pages_change	mali_kbase	EXPORT_SYMBOL_GPL	
-+0x00000000	kbase_disjoint_event_get	mali_kbase	EXPORT_SYMBOL	
-+0x00000000	kbase_mem_pool_grow	mali_kbase	EXPORT_SYMBOL	
-+0x00000000	kbase_mem_pool_set_max_size	mali_kbase	EXPORT_SYMBOL	
-+0x00000000	kbase_mem_pool_init	mali_kbase	EXPORT_SYMBOL	
-+0x00000000	kbase_mem_pool_term	mali_kbase	EXPORT_SYMBOL	
-+0x00000000	kbase_fence_ops	mali_kbase	EXPORT_SYMBOL	
-+0x00000000	kbase_event_dequeue	mali_kbase	EXPORT_SYMBOL	
-+0x00000000	kbase_event_post	mali_kbase	EXPORT_SYMBOL	
-+0x00000000	kbase_event_init	mali_kbase	EXPORT_SYMBOL	
-+0x00000000	kbase_event_cleanup	mali_kbase	EXPORT_SYMBOL	
-+0x00000000	kbase_jd_done_nolock	mali_kbase	EXPORT_SYMBOL	
-+0x00000000	kbase_jd_submit	mali_kbase	EXPORT_SYMBOL	
-+0x00000000	kbase_jd_done	mali_kbase	EXPORT_SYMBOL	
-+0x00000000	kbase_jd_zap_context	mali_kbase	EXPORT_SYMBOL	
-+0x00000000	kbase_jd_init	mali_kbase	EXPORT_SYMBOL	
-+0x00000000	kbase_jd_exit	mali_kbase	EXPORT_SYMBOL	
-+0x00000000	kbase_js_update_ctx_priority	mali_kbase	EXPORT_SYMBOL	
-+0x00000000	kbasep_js_schedule_privileged_ctx	mali_kbase	EXPORT_SYMBOL	
-+0x00000000	kbasep_js_release_privileged_ctx	mali_kbase	EXPORT_SYMBOL	
-+0x00000000	kbasep_kinstr_jm_atom_state	mali_kbase	EXPORT_SYMBOL	
-+0x00000000	kbase_context_debugfs_init	mali_kbase	EXPORT_SYMBOL	
-+0x00000000	kbase_context_debugfs_term	mali_kbase	EXPORT_SYMBOL	
-+0x00000000	kbase_create_context	mali_kbase	EXPORT_SYMBOL	
-+0x00000000	kbase_destroy_context	mali_kbase	EXPORT_SYMBOL	
-+0x00000000	kbase_device_get_list	mali_kbase	EXPORT_SYMBOL	
-+0x00000000	kbase_device_put_list	mali_kbase	EXPORT_SYMBOL	
-+0x00000000	kbase_reg_write	mali_kbase	EXPORT_SYMBOL	
-+0x00000000	kbase_reg_read	mali_kbase	EXPORT_SYMBOL	
-+0x00000000	kbase_synchronize_irqs	mali_kbase	EXPORT_SYMBOL	
-+0x00000000	kbase_pm_wait_for_gpu_power_down	mali_kbase	EXPORT_SYMBOL	
-+0x00000000	kbase_hwaccess_pm_halt	mali_kbase	EXPORT_SYMBOL	
-+0x00000000	corestack_driver_control	mali_kbase	EXPORT_SYMBOL	
-+0x00000000	kbase_pm_get_present_cores	mali_kbase	EXPORT_SYMBOL	
-+0x00000000	kbase_pm_get_active_cores	mali_kbase	EXPORT_SYMBOL	
-+0x00000000	kbase_pm_get_trans_cores	mali_kbase	EXPORT_SYMBOL	
-+0x00000000	kbase_pm_get_ready_cores	mali_kbase	EXPORT_SYMBOL	
-+0x00000000	kbase_pm_wait_for_desired_state	mali_kbase	EXPORT_SYMBOL	
-+0x00000000	kbase_pm_wait_for_poweroff_work_complete	mali_kbase	EXPORT_SYMBOL	
-+0x00000000	kbase_pm_enable_interrupts	mali_kbase	EXPORT_SYMBOL	
-+0x00000000	kbase_pm_disable_interrupts	mali_kbase	EXPORT_SYMBOL	
-+0x00000000	kbase_pm_clock_on	mali_kbase	EXPORT_SYMBOL	
-+0x00000000	kbase_pm_clock_off	mali_kbase	EXPORT_SYMBOL	
-+0x00000000	kbase_pm_reset_done	mali_kbase	EXPORT_SYMBOL	
-+0x00000000	kbase_pm_request_gpu_cycle_counter	mali_kbase	EXPORT_SYMBOL	
-+0x00000000	kbase_pm_request_gpu_cycle_counter_l2_is_on	mali_kbase	EXPORT_SYMBOL	
-+0x00000000	kbase_pm_release_gpu_cycle_counter	mali_kbase	EXPORT_SYMBOL	
-+0x00000000	kbasep_pm_metrics_init	mali_kbase	EXPORT_SYMBOL	
-+0x00000000	kbasep_pm_metrics_term	mali_kbase	EXPORT_SYMBOL	
-+0x00000000	kbase_pm_get_dvfs_metrics	mali_kbase	EXPORT_SYMBOL	
-+0x00000000	kbase_devfreq_set_core_mask	mali_kbase	EXPORT_SYMBOL	
-+0x00000000	kbase_pm_ca_get_core_mask	mali_kbase	EXPORT_SYMBOL	
-+0x00000000	kbase_pm_always_on_policy_ops	mali_kbase	EXPORT_SYMBOL	
-+0x00000000	kbase_pm_coarse_demand_policy_ops	mali_kbase	EXPORT_SYMBOL	
-+0x00000000	kbase_pm_list_policies	mali_kbase	EXPORT_SYMBOL	
-+0x00000000	kbase_pm_get_policy	mali_kbase	EXPORT_SYMBOL	
-+0x00000000	kbase_pm_set_policy	mali_kbase	EXPORT_SYMBOL	
-+0x00000000	kbase_get_timeout_ms	mali_kbase	EXPORT_SYMBOL	
-+0x00000000	kbase_clk_rate_trace_manager_notify_all	mali_kbase	EXPORT_SYMBOL	
-+0x00000000	kbase_instr_hwcnt_request_dump	mali_kbase	EXPORT_SYMBOL	
-+0x00000000	kbase_instr_hwcnt_dump_complete	mali_kbase	EXPORT_SYMBOL	
-+0x00000000	kbase_instr_hwcnt_clear	mali_kbase	EXPORT_SYMBOL	
-+0x00000000	kbase_instr_hwcnt_on_unrecoverable_error	mali_kbase	EXPORT_SYMBOL	
-+0x00000000	kbase_instr_hwcnt_on_before_reset	mali_kbase	EXPORT_SYMBOL	
-+0x00000000	kbase_job_slot_init	mali_kbase	EXPORT_SYMBOL	
-+0x00000000	kbase_job_slot_term	mali_kbase	EXPORT_SYMBOL	
-+0x00000000	kbase_prepare_to_reset_gpu	mali_kbase	EXPORT_SYMBOL	
-+0x00000000	kbase_reset_gpu	mali_kbase	EXPORT_SYMBOL	
-+0x00000000	kbase_reset_gpu_wait	mali_kbase	EXPORT_SYMBOL	
-+0x00000000	kbase_mmu_insert_pages	mali_kbase	EXPORT_SYMBOL	
-+0x00000000	kbase_mmu_update	mali_kbase	EXPORT_SYMBOL	
-+0x00000000	kbase_mmu_disable	mali_kbase	EXPORT_SYMBOL	
-diff -ruN '--exclude=*.o' '--exclude=*.ko' '--exclude=.*' '--exclude=*.mod*' '--exclude=*.cmd' orig/arbiter/mali_kbase_arbiter_pm.c src/arbiter/mali_kbase_arbiter_pm.c
---- orig/arbiter/mali_kbase_arbiter_pm.c	2026-09-05 15:57:30.560000000 +0900
-+++ src/arbiter/mali_kbase_arbiter_pm.c	2026-09-05 16:31:59.456009473 +0900
+diff -ruN a/arbiter/mali_kbase_arbiter_pm.c b/arbiter/mali_kbase_arbiter_pm.c
+--- a/arbiter/mali_kbase_arbiter_pm.c	2026-09-05 23:02:09.321000000 +0900
++++ b/arbiter/mali_kbase_arbiter_pm.c	2026-09-05 23:05:48.420571446 +0900
 @@ -301,10 +301,8 @@
  	INIT_WORK(&arb_vm_state->vm_resume_work, kbase_arbiter_pm_resume_wq);
  	arb_vm_state->vm_arb_starting = false;
@@ -403,9 +31,9 @@ diff -ruN '--exclude=*.o' '--exclude=*.ko' '--exclude=.*' '--exclude=*.mod*' '--
  	kbdev->pm.arb_vm_state = arb_vm_state;
  
  	err = kbase_arbif_init(kbdev);
-diff -ruN '--exclude=*.o' '--exclude=*.ko' '--exclude=.*' '--exclude=*.mod*' '--exclude=*.cmd' orig/backend/gpu/mali_kbase_devfreq.c src/backend/gpu/mali_kbase_devfreq.c
---- orig/backend/gpu/mali_kbase_devfreq.c	2026-09-05 15:57:30.563000000 +0900
-+++ src/backend/gpu/mali_kbase_devfreq.c	2026-09-05 16:35:07.813743730 +0900
+diff -ruN a/backend/gpu/mali_kbase_devfreq.c b/backend/gpu/mali_kbase_devfreq.c
+--- a/backend/gpu/mali_kbase_devfreq.c	2026-09-05 23:02:09.324000000 +0900
++++ b/backend/gpu/mali_kbase_devfreq.c	2026-09-05 23:05:48.420671315 +0900
 @@ -190,7 +190,7 @@
  	unsigned long nominal_freq;
  	unsigned long freqs[BASE_MAX_NR_CLOCKS_REGULATORS] = {0};
@@ -433,9 +61,9 @@ diff -ruN '--exclude=*.o' '--exclude=*.ko' '--exclude=.*' '--exclude=*.mod*' '--
  	/*
  	 * Only update if there is a change of frequency or voltage
  	 */
-diff -ruN '--exclude=*.o' '--exclude=*.ko' '--exclude=.*' '--exclude=*.mod*' '--exclude=*.cmd' orig/backend/gpu/mali_kbase_irq_linux.c src/backend/gpu/mali_kbase_irq_linux.c
---- orig/backend/gpu/mali_kbase_irq_linux.c	2026-09-05 15:57:30.566000000 +0900
-+++ src/backend/gpu/mali_kbase_irq_linux.c	2026-09-05 16:31:59.456246586 +0900
+diff -ruN a/backend/gpu/mali_kbase_irq_linux.c b/backend/gpu/mali_kbase_irq_linux.c
+--- a/backend/gpu/mali_kbase_irq_linux.c	2026-09-05 23:02:09.327000000 +0900
++++ b/backend/gpu/mali_kbase_irq_linux.c	2026-09-05 23:05:48.420744863 +0900
 @@ -364,10 +364,8 @@
  			err = -EINVAL;
  		} else {
@@ -449,9 +77,9 @@ diff -ruN '--exclude=*.o' '--exclude=*.ko' '--exclude=.*' '--exclude=*.mod*' '--
  
  			/* trigger interrupt */
  			kbase_reg_write(kbdev, mask_offset, 0x1);
-diff -ruN '--exclude=*.o' '--exclude=*.ko' '--exclude=.*' '--exclude=*.mod*' '--exclude=*.cmd' orig/backend/gpu/mali_kbase_jm_hw.c src/backend/gpu/mali_kbase_jm_hw.c
---- orig/backend/gpu/mali_kbase_jm_hw.c	2026-09-05 15:57:30.567000000 +0900
-+++ src/backend/gpu/mali_kbase_jm_hw.c	2026-09-05 16:31:59.456382260 +0900
+diff -ruN a/backend/gpu/mali_kbase_jm_hw.c b/backend/gpu/mali_kbase_jm_hw.c
+--- a/backend/gpu/mali_kbase_jm_hw.c	2026-09-05 23:02:09.328000000 +0900
++++ b/backend/gpu/mali_kbase_jm_hw.c	2026-09-05 23:05:48.420830584 +0900
 @@ -1484,10 +1484,8 @@
  	INIT_WORK(&kbdev->hwaccess.backend.reset_work,
  						kbasep_reset_timeout_worker);
@@ -465,9 +93,9 @@ diff -ruN '--exclude=*.o' '--exclude=*.ko' '--exclude=.*' '--exclude=*.mod*' '--
  
  	return 0;
  }
-diff -ruN '--exclude=*.o' '--exclude=*.ko' '--exclude=.*' '--exclude=*.mod*' '--exclude=*.cmd' orig/backend/gpu/mali_kbase_js_backend.c src/backend/gpu/mali_kbase_js_backend.c
---- orig/backend/gpu/mali_kbase_js_backend.c	2026-09-05 15:57:30.573000000 +0900
-+++ src/backend/gpu/mali_kbase_js_backend.c	2026-09-05 16:31:59.456577776 +0900
+diff -ruN a/backend/gpu/mali_kbase_js_backend.c b/backend/gpu/mali_kbase_js_backend.c
+--- a/backend/gpu/mali_kbase_js_backend.c	2026-09-05 23:02:09.333000000 +0900
++++ b/backend/gpu/mali_kbase_js_backend.c	2026-09-05 23:05:48.420917868 +0900
 @@ -342,9 +342,8 @@
  {
  	struct kbase_backend_data *backend = &kbdev->hwaccess.backend;
@@ -480,9 +108,9 @@ diff -ruN '--exclude=*.o' '--exclude=*.ko' '--exclude=.*' '--exclude=*.mod*' '--
  	backend->timer_running = false;
  
  	return 0;
-diff -ruN '--exclude=*.o' '--exclude=*.ko' '--exclude=.*' '--exclude=*.mod*' '--exclude=*.cmd' orig/backend/gpu/mali_kbase_pm_driver.c src/backend/gpu/mali_kbase_pm_driver.c
---- orig/backend/gpu/mali_kbase_pm_driver.c	2026-09-05 15:57:30.581000000 +0900
-+++ src/backend/gpu/mali_kbase_pm_driver.c	2026-09-05 16:31:59.456848943 +0900
+diff -ruN a/backend/gpu/mali_kbase_pm_driver.c b/backend/gpu/mali_kbase_pm_driver.c
+--- a/backend/gpu/mali_kbase_pm_driver.c	2026-09-05 23:02:09.341000000 +0900
++++ b/backend/gpu/mali_kbase_pm_driver.c	2026-09-05 23:05:48.421064333 +0900
 @@ -2210,8 +2210,8 @@
  	INIT_WORK(&stt->work, shader_poweroff_timer_stop_callback);
  
@@ -505,9 +133,9 @@ diff -ruN '--exclude=*.o' '--exclude=*.ko' '--exclude=.*' '--exclude=*.mod*' '--
  
  	hrtimer_start(&rtdata.timer, HR_TIMER_DELAY_MSEC(RESET_TIMEOUT),
  							HRTIMER_MODE_REL);
-diff -ruN '--exclude=*.o' '--exclude=*.ko' '--exclude=.*' '--exclude=*.mod*' '--exclude=*.cmd' orig/backend/gpu/mali_kbase_pm_metrics.c src/backend/gpu/mali_kbase_pm_metrics.c
---- orig/backend/gpu/mali_kbase_pm_metrics.c	2026-09-05 15:57:30.586000000 +0900
-+++ src/backend/gpu/mali_kbase_pm_metrics.c	2026-09-05 16:31:59.457202594 +0900
+diff -ruN a/backend/gpu/mali_kbase_pm_metrics.c b/backend/gpu/mali_kbase_pm_metrics.c
+--- a/backend/gpu/mali_kbase_pm_metrics.c	2026-09-05 23:02:09.346000000 +0900
++++ b/backend/gpu/mali_kbase_pm_metrics.c	2026-09-05 23:05:48.421237468 +0900
 @@ -157,9 +157,8 @@
  	spin_lock_init(&kbdev->pm.backend.metrics.lock);
  
@@ -520,9 +148,9 @@ diff -ruN '--exclude=*.o' '--exclude=*.ko' '--exclude=.*' '--exclude=*.mod*' '--
  	kbdev->pm.backend.metrics.initialized = true;
  	atomic_set(&kbdev->pm.backend.metrics.timer_state, TIMER_OFF);
  	kbase_pm_metrics_start(kbdev);
-diff -ruN '--exclude=*.o' '--exclude=*.ko' '--exclude=.*' '--exclude=*.mod*' '--exclude=*.cmd' orig/csf/mali_kbase_csf_scheduler.c src/csf/mali_kbase_csf_scheduler.c
---- orig/csf/mali_kbase_csf_scheduler.c	2026-09-05 15:57:30.622000000 +0900
-+++ src/csf/mali_kbase_csf_scheduler.c	2026-09-05 16:31:59.457597132 +0900
+diff -ruN a/csf/mali_kbase_csf_scheduler.c b/csf/mali_kbase_csf_scheduler.c
+--- a/csf/mali_kbase_csf_scheduler.c	2026-09-05 23:02:09.382000000 +0900
++++ b/csf/mali_kbase_csf_scheduler.c	2026-09-05 23:05:48.421571450 +0900
 @@ -6789,8 +6789,8 @@
  	atomic_set(&scheduler->gpu_no_longer_idle, false);
  	atomic_set(&scheduler->non_idle_offslot_grps, 0);
@@ -534,9 +162,9 @@ diff -ruN '--exclude=*.o' '--exclude=*.ko' '--exclude=.*' '--exclude=*.mod*' '--
  
  	kbase_csf_tiler_heap_reclaim_mgr_init(kbdev);
  
-diff -ruN '--exclude=*.o' '--exclude=*.ko' '--exclude=.*' '--exclude=*.mod*' '--exclude=*.cmd' orig/include/version_compat_defs.h src/include/version_compat_defs.h
---- orig/include/version_compat_defs.h	2026-09-05 15:57:30.672000000 +0900
-+++ src/include/version_compat_defs.h	2026-09-05 16:35:07.813540489 +0900
+diff -ruN a/include/version_compat_defs.h b/include/version_compat_defs.h
+--- a/include/version_compat_defs.h	2026-09-05 23:02:09.441000000 +0900
++++ b/include/version_compat_defs.h	2026-09-05 23:05:48.422256199 +0900
 @@ -240,4 +240,63 @@
  #define KBASE_CLASS_CREATE(owner, name) class_create(owner, name)
  #endif
@@ -601,9 +229,9 @@ diff -ruN '--exclude=*.o' '--exclude=*.ko' '--exclude=.*' '--exclude=*.mod*' '--
 +#endif
 +
  #endif /* _VERSION_COMPAT_DEFS_H_ */
-diff -ruN '--exclude=*.o' '--exclude=*.ko' '--exclude=.*' '--exclude=*.mod*' '--exclude=*.cmd' orig/mali_kbase_fence_ops.c src/mali_kbase_fence_ops.c
---- orig/mali_kbase_fence_ops.c	2026-09-05 15:57:30.703000000 +0900
-+++ src/mali_kbase_fence_ops.c	2026-09-05 16:34:11.902906128 +0900
+diff -ruN a/mali_kbase_fence_ops.c b/mali_kbase_fence_ops.c
+--- a/mali_kbase_fence_ops.c	2026-09-05 23:02:09.472000000 +0900
++++ b/mali_kbase_fence_ops.c	2026-09-05 23:05:48.422329046 +0900
 @@ -102,10 +102,13 @@
  					   .get_timeline_name = kbase_fence_get_timeline_name,
  					   .enable_signaling = kbase_fence_enable_signaling,
@@ -621,9 +249,9 @@ diff -ruN '--exclude=*.o' '--exclude=*.ko' '--exclude=.*' '--exclude=*.mod*' '--
  #endif
  };
  KBASE_EXPORT_TEST_API(kbase_fence_ops);
-diff -ruN '--exclude=*.o' '--exclude=*.ko' '--exclude=.*' '--exclude=*.mod*' '--exclude=*.cmd' orig/mali_kbase_js.c src/mali_kbase_js.c
---- orig/mali_kbase_js.c	2026-09-05 15:57:30.711000000 +0900
-+++ src/mali_kbase_js.c	2026-09-05 16:31:59.458367864 +0900
+diff -ruN a/mali_kbase_js.c b/mali_kbase_js.c
+--- a/mali_kbase_js.c	2026-09-05 23:02:09.481000000 +0900
++++ b/mali_kbase_js.c	2026-09-05 23:05:48.422583563 +0900
 @@ -737,8 +737,8 @@
  		gpu_metrics_tp_emit_interval_ns = DEFAULT_GPU_METRICS_TP_EMIT_INTERVAL_NS;
  	}
@@ -635,9 +263,9 @@ diff -ruN '--exclude=*.o' '--exclude=*.ko' '--exclude=.*' '--exclude=*.mod*' '--
  	jsdd->gpu_metrics_timer_needed = false;
  	jsdd->gpu_metrics_timer_running = false;
  #endif
-diff -ruN '--exclude=*.o' '--exclude=*.ko' '--exclude=.*' '--exclude=*.mod*' '--exclude=*.cmd' orig/mali_kbase_kinstr_prfcnt.c src/mali_kbase_kinstr_prfcnt.c
---- orig/mali_kbase_kinstr_prfcnt.c	2026-09-05 15:57:30.718000000 +0900
-+++ src/mali_kbase_kinstr_prfcnt.c	2026-09-05 16:31:59.458943551 +0900
+diff -ruN a/mali_kbase_kinstr_prfcnt.c b/mali_kbase_kinstr_prfcnt.c
+--- a/mali_kbase_kinstr_prfcnt.c	2026-09-05 23:02:09.488000000 +0900
++++ b/mali_kbase_kinstr_prfcnt.c	2026-09-05 23:05:48.422949550 +0900
 @@ -1224,9 +1224,8 @@
  
  	mutex_init(&kinstr_ctx->lock);
@@ -650,9 +278,9 @@ diff -ruN '--exclude=*.o' '--exclude=*.ko' '--exclude=.*' '--exclude=*.mod*' '--
  	INIT_WORK(&kinstr_ctx->dump_work, kbasep_kinstr_prfcnt_dump_worker);
  
  	*out_kinstr_ctx = kinstr_ctx;
-diff -ruN '--exclude=*.o' '--exclude=*.ko' '--exclude=.*' '--exclude=*.mod*' '--exclude=*.cmd' orig/mali_kbase_vinstr.c src/mali_kbase_vinstr.c
---- orig/mali_kbase_vinstr.c	2026-09-05 15:57:30.747000000 +0900
-+++ src/mali_kbase_vinstr.c	2026-09-05 16:31:59.459243522 +0900
+diff -ruN a/mali_kbase_vinstr.c b/mali_kbase_vinstr.c
+--- a/mali_kbase_vinstr.c	2026-09-05 23:02:09.525000000 +0900
++++ b/mali_kbase_vinstr.c	2026-09-05 23:05:48.423186645 +0900
 @@ -503,8 +503,8 @@
  
  	mutex_init(&vctx->lock);
@@ -664,8 +292,3 @@ diff -ruN '--exclude=*.o' '--exclude=*.ko' '--exclude=.*' '--exclude=*.mod*' '--
  	INIT_WORK(&vctx->dump_work, kbasep_vinstr_dump_worker);
  
  	*out_vctx = vctx;
-diff -ruN '--exclude=*.o' '--exclude=*.ko' '--exclude=.*' '--exclude=*.mod*' '--exclude=*.cmd' orig/modules.order src/modules.order
---- orig/modules.order	1970-01-01 09:00:00.000000000 +0900
-+++ src/modules.order	2026-09-05 16:59:56.927936927 +0900
-@@ -0,0 +1 @@
-+mali_kbase.o
