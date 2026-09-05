@@ -120,13 +120,59 @@ physical devices = 1
 `gcompat` 은 `/opt/gcompat` 에 풀어 쓴다. apk 로 설치하면 다른 용도로 깔아둔
 진짜 glibc 와 `ld-linux-aarch64.so.1` 을 두고 충돌한다.
 
-### 남은 것
+### Wayland 출력 (WSI 레이어)
 
-Vulkan 에 `VK_KHR_wayland_surface` 가 없어 Wayland 창에 출력할 수 없다. ARM 이
-그 자리를 메우는 WSI 레이어를 따로 배포한다
-([ginkage/libmali-rockchip](https://github.com/ginkage/libmali-rockchip) 의
-`libVkLayer_window_system_integration.so`). Vulkan 로더가 드라이버 앞에 레이어를
-끼우는 구조라, WSI 만 밖에서 붙일 수 있다.
+블롭의 Vulkan 에는 `VK_KHR_wayland_surface` 가 없다. Vulkan 로더가 드라이버 앞에
+레이어를 끼우는 구조라, WSI 만 밖에서 붙일 수 있다. ARM 이 바로 그 레이어를
+배포한다 ([ginkage/libmali-rockchip](https://github.com/ginkage/libmali-rockchip)
+의 `libVkLayer_window_system_integration.so`). 이건 GPU 와 무관한 순수 WSI 코드라
+Rockchip 배포본을 그대로 쓴다.
+
+```
+VK_LAYER_window_system_integration (Window system integration layer) active
+  VK_KHR_wayland_surface : extension revision 6
+  VK_KHR_swapchain       : extension revision 70
+```
+
+### glibc 에서 굴리기
+
+musl 경로는 블롭을 띄우는 데엔 충분하지만, glibc 로 빌드된 앱(예: Zed)을 그 위에
+올릴 수 없다. glibc 쪽으로 가려면 두 가지를 해결해야 한다.
+
+**`DT_RELR` 표기.** glibc 는 `DT_RELR` 재배치를 가진 오브젝트가
+`GLIBC_ABI_DT_RELR` 의존을 선언하지 않으면 로드를 거부한다. `DT_RELR` 을 모르는
+옛 glibc 에서 재배치가 조용히 누락된 채 돌아가는 대신 큰 소리로 실패하게 하려는
+장치다. 자체 로더를 쓰는 ChromeOS 빌드는 이 선언을 넣지 않는다.
+
+기능은 다 있고 서류만 없는 상황이라, `tools/declare-dt-relr.py` 가 서류를 채운다.
+`.dynstr` 과 `.gnu.version_r` 을 파일 끝에 복사하면서 버전 이름과 `Vernaux`
+하나를 덧붙이고, 남아도는 `PT_NOTE` 헤더를 `PT_LOAD` 로 바꿔 그 블록을 매핑한
+뒤 `DT_STRTAB`/`DT_VERNEED` 를 옮긴다. 기존 바이트는 하나도 건드리지 않는다.
+
+**libc++.** 블롭은 `std::__1::__hash_memory` 를 쓴다 — LLVM 20 부터 있는 심볼이라
+그 이전 libc++ 로는 링크가 안 풀린다. 호스트 것은 musl 빌드라 못 쓰고 freedesktop
+런타임엔 아예 없으니, Debian arm64 `libc++1` (21.x) 을 `$PREFIX/lib` 에 같이 둔다.
+
+이 둘을 하면 심(shim)도 gcompat 도 필요 없다. glibc 가 `__*_chk`, `__isoc23_*`,
+`*64` 를 전부 원래 제공하기 때문이다. `tools/run-with-mali-glibc.sh` 가 환경만
+묶는 것으로 끝나는 이유다.
+
+```
+$ run-with-mali-glibc.sh python3 vkprobe.py     # flatpak org.freedesktop.Sdk 안
+physical devices: 1
+  Mali-G72  api=1.3.313  vendor=0x13b5  type=INTEGRATED_GPU
+```
+
+### 남은 것 — 컴포지터
+
+kbase 가 GPU 를 가져가면 `/dev/dri/renderD128` 이 사라진다. 남는 DRM 노드는
+디스플레이 컨트롤러(`mediatek-drm`) 뿐이라 Mesa 에 렌더 디바이스가 없고, KWin 이
+뜨지 못한다. Panfrost 와 kbase 는 공존할 수 없으므로 **데스크톱도 같이 옮겨야
+한다.**
+
+블롭은 `gbm_*` 을 내보내지 않는다 — libgbm 은 별도이고, ChromeOS 는 minigbm 을
+쓴다. 즉 KWin 을 Mali EGL 위에 올리려면 mediatek 백엔드를 가진 gbm 구현이
+필요하다. 클라이언트 쪽(Zed)은 위의 WSI 레이어로 이미 해결돼 있다.
 
 ## 되돌리기
 
