@@ -212,7 +212,12 @@ sudo mali-vendor-setup
 ```
 
 ChromeOS 복구 이미지 목록에서 이 보드 것을 찾아 받는다(압축 2GB). **받으면서
-읽어 루트 파티션만 디스크에 쓰고**, 드라이버를 꺼낸 뒤 지운다. 이미 받아둔
+읽어 루트 파티션만 디스크에 쓰고**, 드라이버를 꺼낸 뒤 지운다. 이어서 WSI
+레이어와 libc++ 를 받고, 심을 컴파일하고, `/etc/deviceinfo` 를 kbase DTB 로
+돌린 뒤 `mkinitfs` 로 부트 파티션을 다시 굽는다.
+
+`apk add` 만으로 여기까지 하지 않는 이유는 이 단계가 2GB 를 내려받고 부트
+파티션을 다시 쓰기 때문이다. 패키지 설치가 조용히 할 일이 아니다. 이미 받아둔
 파일이 있으면 `--image <파일>`, 마운트해둔 ChromeOS 루트가 있으면 `--root <경로>`
 로 건너뛸 수 있다.
 
@@ -226,15 +231,7 @@ ChromeOS 복구 이미지 목록에서 이 보드 것을 찾아 받는다(압축
   `std::__1::__hash_memory` 를 쓰는데 그 이전 판엔 없다. flatpak 쪽
   `/opt/mali/glibc/lib` 에 둔다.
 
-### 3. Qt 를 Vulkan 으로
-
-이걸 안 하면 셸의 글자와 아이콘이 렌더되지 않는다. `plasma-integration` 이
-GL 을 찔러보고 실패하면 세션 전체를 소프트웨어 백엔드로 못박기 때문이다.
-
-```sh
-kwriteconfig6 --file kdeglobals --group QtQuickRendererSettings \
-    --key SceneGraphBackend vulkan
-```
+### 3. 확인
 
 재부팅하면 KWin 이 `Mali-G72` 로, Qt 앱이 `/dev/mali0` 로 붙는다.
 

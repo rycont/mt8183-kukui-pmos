@@ -157,14 +157,21 @@ else
 	echo "         (pkgrel 4 or newer) and run this again." >&2
 fi
 
+# 7. Name Qt's scene graph backend. plasma-integration probes GL, and when the
+#    probe fails it pins the whole session to software rendering -- which draws
+#    no glyphs at all in the shell. This is written here rather than shipped in
+#    the package because until the driver is in place, asking for Vulkan breaks
+#    a working Panfrost session.
+if ! grep -qs SceneGraphBackend /etc/xdg/kdeglobals; then
+	printf '\n[QtQuickRendererSettings]\nSceneGraphBackend=vulkan\n' \
+		>> /etc/xdg/kdeglobals
+fi
+
 cat <<-DONE
 
-	Installed. One setting is still needed, and it is not one this package
-	should reach into: Qt falls back to software rendering unless the scene
-	graph backend is named, and then the shell draws no glyphs.
+	Installed. Reboot to use it.
 
-	    kwriteconfig6 --file kdeglobals \\
-	        --group QtQuickRendererSettings --key SceneGraphBackend vulkan
-
-	Then reboot. See /usr/share/doc/mali-vendor-krane/README.md.
+	To go back to Panfrost: drop the deviceinfo_dtb line from /etc/deviceinfo
+	and the QtQuickRendererSettings group from /etc/xdg/kdeglobals, then run
+	mkinitfs. See /usr/share/doc/mali-vendor-krane/README.md.
 DONE
