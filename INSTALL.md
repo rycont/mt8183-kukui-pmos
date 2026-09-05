@@ -178,8 +178,14 @@ gpu/tools/build-kbase.sh <커널트리> kbase-src
 
 ### 2. 유저스페이스
 
+패키지는 미리 빌드해두지 않는다 — 안에 든 게 스크립트와 C 소스뿐이라
+기기에서 만드는 편이 릴리스에 올려두는 것보다 짧다. 이 저장소를 기기에
+복사한 뒤:
+
 ```sh
-sudo apk add --allow-untrusted mali-vendor-krane-*.apk
+cd gpu
+./build-packages.sh                       # abuild 없으면 alpine-sdk 를 깐다
+sudo apk add --allow-untrusted ~/packages/*/aarch64/mali-vendor-krane-*.apk
 ```
 
 드라이버 자체는 ARM EULA 라 패키지에 못 넣는다. G72 용 리눅스 빌드는 ChromeOS
@@ -194,13 +200,13 @@ ChromeOS 복구 이미지 목록에서 이 보드 것을 찾아 받는다(압축
 파일이 있으면 `--image <파일>`, 마운트해둔 ChromeOS 루트가 있으면 `--root <경로>`
 로 건너뛸 수 있다.
 
-여기에 두 가지를 더 넣어야 한다 — 스크립트가 끝에 다시 알려준다:
+같은 스크립트가 블롭 혼자서는 모자란 두 개도 같이 받아온다:
 
 - `libVkLayer_window_system_integration.so`
   ([ginkage/libmali-rockchip](https://github.com/ginkage/libmali-rockchip)).
   블롭엔 `VK_KHR_wayland_surface` 가 없고, 이 레이어가 그 자리를 메운다.
   GPU 와 무관한 코드라 Rockchip 배포본을 그대로 쓴다.
-- LLVM 20 이상의 `libc++` (Debian arm64 `libc++1` 로 충분). 블롭이
+- LLVM 20 이상의 `libc++` (Debian arm64 `libc++1`). 블롭이
   `std::__1::__hash_memory` 를 쓰는데 그 이전 판엔 없다. flatpak 쪽
   `/opt/mali/glibc/lib` 에 둔다.
 
