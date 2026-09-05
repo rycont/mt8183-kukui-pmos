@@ -156,12 +156,27 @@ for lib in libc++ libc++abi; do
 	ln -sf "$lib.so.1.0" "$DESTDIR$GLIBC/lib/$lib.so.1"
 done
 
-# 5. The shim and the layer have to be built against whichever libc loads them.
+# 5. The glibc sonames the blob asks for. gcompat provides them, but it cannot
+#    be installed alongside glibc-bin -- both claim so:ld-linux-aarch64.so.1 --
+#    and its files land in /lib, which cannot go on LD_LIBRARY_PATH without
+#    shadowing musl for everything else in the session. So take the files and
+#    put them somewhere of their own.
+echo "fetching gcompat"
+( cd "$WORK" && apk fetch --quiet gcompat )
+install -d "$DESTDIR/opt/gcompat"
+tar xzf "$WORK"/gcompat-*.apk -C "$DESTDIR/opt/gcompat" lib lib64
+
+# 6. The shim and the layer have to be built against whichever libc loads them.
 MALI_DESTDIR="$DESTDIR" mali-build-shims
+
+for P in "$PREFIX" "$GLIBC"; do
+	sed "s|@PREFIX@|$P|" "$SHARE/present-sync-layer.json.in" \
+		> "$DESTDIR$P/share/vulkan/implicit_layer.d/VkLayer_mali_present_sync.json"
+done
 
 [ -n "$DESTDIR" ] && exit 0
 
-# 6. Point the boot chain at the DTBs built for kbase, and name Qt's scene
+# 7. Point the boot chain at the DTBs built for kbase, and name Qt's scene
 #    graph backend. When mali-vendor-setup is run with --destdir these are the
 #    package's job instead -- see mali-vendor-krane.post-install.
 mali-vendor-activate

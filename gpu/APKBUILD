@@ -9,7 +9,9 @@ license="MIT"
 # The driver is loaded at startup rather than dlopened, because musl only grants
 # initial-exec TLS to libraries present from the beginning; gcompat supplies the
 # glibc symbols it asks for, and it wants a libc++ of its own.
-depends="gcompat libc++ mesa-gbm vulkan-loader"
+# gcompat is not a dependency: it conflicts with glibc-bin over
+# so:ld-linux-aarch64.so.1, so its libraries are carried under /opt/gcompat.
+depends="libc++ mesa-gbm vulkan-loader"
 install="$pkgname.post-install $pkgname.post-deinstall"
 source="
 	tools/mali-vendor-activate
@@ -19,9 +21,10 @@ source="
 	README.md
 	"
 builddir="$srcdir"
-# The vendor driver must not be stripped, and nothing in Alpine provides the
-# glibc sonames it asks for -- gcompat does, under other names.
-options="!check !strip !tracedeps"
+# The vendor driver must not be stripped; nothing in Alpine provides the glibc
+# sonames it asks for (gcompat does, under other names); and it lives in /opt
+# because it is not part of the distribution's library set at all.
+options="!check !strip !tracedeps !fhs"
 
 # abuild is not consistent about whether a local source keeps its directory,
 # so look in both places rather than depend on it.
@@ -38,17 +41,8 @@ package() {
 		echo "no staged driver; run ./build-packages.sh instead of abuild" >&2
 		return 1
 	}
+	install -d "$pkgdir"
 	cp -a "$startdir/stage/opt" "$pkgdir/"
-
-	# gcompat installs into /lib, which cannot go on LD_LIBRARY_PATH without
-	# shadowing musl for everything else in the session.
-	install -d "$pkgdir/opt/gcompat/lib" "$pkgdir/opt/gcompat/lib64"
-	for lib in ld-linux-aarch64.so.1 libc.so.6 libcrypt.so.1 libgcompat.so.0 \
-		libm.so.6 libpthread.so.0 libresolv.so.2 librt.so.1 libutil.so.1; do
-		ln -sf "/lib/$lib" "$pkgdir/opt/gcompat/lib/$lib"
-	done
-	ln -sf ../lib/ld-linux-aarch64.so.1 \
-		"$pkgdir/opt/gcompat/lib64/ld-linux-aarch64.so.1"
 
 	install -Dm755 "$(src tools/mali-vendor-activate)" \
 		"$pkgdir/usr/bin/mali-vendor-activate"

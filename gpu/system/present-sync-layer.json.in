@@ -1,0 +1,12 @@
+{
+    "file_format_version": "1.1.2",
+    "layer": {
+        "name": "VK_LAYER_mali_present_sync",
+        "type": "GLOBAL",
+        "library_path": "@PREFIX@/lib/libVkLayer_mali_present_sync.so",
+        "api_version": "1.3.313",
+        "implementation_version": "1",
+        "description": "Finish rendering before handing a frame to the compositor",
+        "disable_environment": { "MALI_PRESENT_SYNC_DISABLE": "1" }
+    }
+}
