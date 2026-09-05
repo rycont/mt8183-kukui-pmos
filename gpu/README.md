@@ -259,41 +259,50 @@ ChromeOS 도 이 winsys 를 쓰지 않는다. `libEGL.so.1` 은 `dlopen("libmali
 GPU 가 DRM 밖에 있어 원리상 대답할 수 없는 질문이라, 버퍼가 실제로 오는 곳을 대신
 알려주는 것이다.
 
-여기까지 하면 KWin 이 **EGL 을 초기화하고 GLES 컨텍스트를 만든다.**
+이걸로 끝이다. KWin 이 벤더 드라이버 위에서 GLES 로 합성한다.
 
 ```
-kwin_scene_opengl: Egl Initialize succeeded
-kwin_scene_opengl: EGL version: 1.5
-kwin_scene_opengl: Created EGL context with attributes: ...
-kwin_core: Could not fulfill the requested compositing mode. Exiting.
+kwin_core: OpenGL compositing has been successfully initialized
+
+Compositing Type:       OpenGL ES 2.0
+OpenGL vendor string:   ARM
+OpenGL renderer string: Mali-G72
+OpenGL version string:  OpenGL ES 3.2 v1.r54p1-12eac0.d6e444aeb29579d8c20656d21c96307d
 ```
 
-마지막 줄이 남은 벽이다. 컨텍스트 생성 뒤 아무 메시지 없이 백엔드가 실패한다.
-확장도 포맷도 갖춰져 있으니 로그를 남기지 않는 early-return 이고, 여기서부터는
-pmOS 가 패키징한 KWin 스냅샷과 같은 소스가 있어야 짚을 수 있다.
+`kwin_wayland` 의 메모리 매핑에 `swrast` 도 `llvmpipe` 도 없다 — `/dev/mali0`,
+셔틀, `libmali.so`, 그리고 버퍼 할당용 Mesa `libgbm` 뿐이다.
 
-**셔틀을 쓰려면** `libEGL.so.1` 자리에 있어야 한다. KWin 은 libepoxy 로
-`dlopen("libEGL.so.1")` 후 핸들에 `dlsym` 하므로 `LD_PRELOAD` 로는 가로채지지 않는다.
-libmali 를 `DT_NEEDED` 로 걸어두면 나머지 함수는 의존성 사슬에서 해결된다.
+마지막에 한참 헤맨 것은 드라이버 탓이 아니었다. 디버깅하려고 준 `KWIN_COMPOSE=O`
+가 원인이다. KWin 6.6 은 `O2` 와 `O2ES` 만 받고, 그 밖의 값이면 백엔드 초기화가
+끝난 뒤에 **로그 한 줄 없이** `return false` 한다 (`compositor.cpp:166`). 백엔드는
+그 전에 이미 성공해 있었다.
+
+**`libEGL.so.1` 자리에 있어야 한다.** KWin 은 libepoxy 로 `dlopen("libEGL.so.1")`
+한 뒤 그 핸들에 `dlsym` 하므로 `LD_PRELOAD` 로는 가로채지지 않는다. libmali 를
+`DT_NEEDED` 로 걸어두면 나머지 함수는 의존성 사슬에서 해결된다.
 
 ```sh
 gcc -shared -fPIC -Wl,-soname,libEGL.so.1 -o libEGL.so.1 egl-gbm-shim.c \
     -Wl,--no-as-needed /opt/mali/lib/libmali.so -ldl
 ```
 
+SONAME 이 `libmali.so.0` 이므로 그 이름의 심볼릭 링크가 있어야 한다.
+`system/plasma-mobile-mali.conf` 가 세션에 필요한 환경을 담고 있다.
+
 ### 결과
 
-```
-$ run-cage-mali.sh zed
-Selected GPU (passed configuration test): Mali-G72 (Vulkan)
-Using GPU: is_software_emulated: false, device_name: "Mali-G72",
-           driver_info: "v1.r54p1-12eac0.d6e444aeb29579d8c20656d21c96307d"
+같은 화소 수(1920x1200, 2.30 Mpx)에서 Zed 를 재면:
 
-BENCH frames=120 median=37.1ms p95=47.8ms fps=25.7      (1200x1920 전체화면)
-```
+| 스택 | 프레임 시간 |
+|---|---|
+| Panfrost + KWin | 33.3 ms |
+| cage (wlroots Vulkan 렌더러) + Mali | 37.1 ms |
+| **Plasma Mobile(KWin/GLES) + Mali** | **18.1 ms** (54 fps) |
 
-Panfrost + KWin 은 같은 화소 수에서 33.3ms 였다. **공식 드라이버 쪽이 11% 느리다.**
-컴포지터가 달라 순수 비교는 아니지만, 어느 쪽이든 성능이 이 작업의 이유는 아니다.
+**벤더 드라이버 쪽이 Panfrost 보다 1.8배 빠르다.** 앞서 cage 에서 37ms 가 나온 것은
+드라이버가 아니라 컴포지터 탓이었다 — wlroots 의 Vulkan 렌더러는 스스로 실험적이라
+밝히고 있고, 전체화면 창을 직접 스캔아웃하지 않는다.
 
 ## 되돌리기
 
