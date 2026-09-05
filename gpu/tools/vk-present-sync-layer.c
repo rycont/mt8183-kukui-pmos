@@ -15,6 +15,7 @@
  * are correct. Set MALI_PRESENT_SYNC=0 to take the hook out of the way.
  */
 #include <stdio.h>
+#include <time.h>
 #include <stdlib.h>
 #include <string.h>
 #include <vulkan/vulkan.h>
@@ -29,8 +30,6 @@ static void *dispatch_key(void *handle)
 	return *(void **)handle;
 }
 
-#define MIN_SWAPCHAIN_IMAGES 4
-
 struct device_data {
 	void *key;
 	PFN_vkCreateSwapchainKHR create_swapchain;
@@ -43,6 +42,73 @@ struct device_data {
 
 static struct device_data *devices;
 static int announced;
+
+/* Qt arms a frame callback of its own and the WSI layer arms another, so the
+   two throttle the client independently and two frames can land inside one
+   refresh. Qt's animation driver advances by a fixed vsync interval per frame
+   it renders, so a doubled frame moves animation twice as far as the display
+   did -- motion runs ahead and then appears to fall back. Hold each present
+   until a refresh has actually passed. MALI_PRESENT_PACE_US sets the interval;
+   0 turns the pacing off. */
+static long pace_interval_us(void)
+{
+	static long us = -1;
+	const char *set;
+
+	if (us < 0) {
+		set = getenv("MALI_PRESENT_PACE_US");
+		us = set ? atol(set) : 0;
+	}
+	return us;
+}
+
+/* Paced per swapchain: a window that is presenting must not have its turn
+   consumed by another one. */
+#define PACED_SWAPCHAINS 16
+
+static void pace(const VkPresentInfoKHR *info)
+{
+	static struct {
+		VkSwapchainKHR swapchain;
+		struct timespec last;
+	} seen[PACED_SWAPCHAINS];
+	long interval = pace_interval_us(), waited;
+	struct timespec now;
+	VkSwapchainKHR key;
+	unsigned i, slot;
+
+	if (interval <= 0 || info->swapchainCount == 0)
+		return;
+	key = info->pSwapchains[0];
+	for (i = 0, slot = PACED_SWAPCHAINS; i < PACED_SWAPCHAINS; i++) {
+		if (seen[i].swapchain == key)
+			break;
+		if (!seen[i].swapchain && slot == PACED_SWAPCHAINS)
+			slot = i;
+	}
+	if (i == PACED_SWAPCHAINS) {
+		if (slot == PACED_SWAPCHAINS)
+			return;
+		i = slot;
+		seen[i].swapchain = key;
+	}
+
+	clock_gettime(CLOCK_MONOTONIC, &now);
+	if (seen[i].last.tv_sec) {
+		waited = (now.tv_sec - seen[i].last.tv_sec) * 1000000 +
+			 (now.tv_nsec - seen[i].last.tv_nsec) / 1000;
+		if (waited < interval) {
+			struct timespec rest = {
+				.tv_sec = 0,
+				.tv_nsec = (interval - waited) * 1000,
+			};
+			nanosleep(&rest, NULL);
+			clock_gettime(CLOCK_MONOTONIC, &now);
+		}
+	}
+	seen[i].last = now;
+}
+
 
 static struct device_data *device_for(void *handle)
 {
@@ -147,10 +213,10 @@ queue_present(VkQueue queue, const VkPresentInfoKHR *info)
 		return VK_ERROR_INITIALIZATION_FAILED;
 	if (!announced) {
 		announced = 1;
-		fprintf(stderr, LAYER_NAME ": idling before present, %d swapchain images\n",
-			MIN_SWAPCHAIN_IMAGES);
+		fprintf(stderr, LAYER_NAME ": idling the queue before each present\n");
 	}
 	data->wait_idle(queue);
+	pace(info);
 	return data->present(queue, info);
 }
 
@@ -169,8 +235,15 @@ create_swapchain(VkDevice device, const VkSwapchainCreateInfoKHR *info,
 	if (!data)
 		return VK_ERROR_INITIALIZATION_FAILED;
 	deeper = *info;
-	if (deeper.minImageCount < MIN_SWAPCHAIN_IMAGES)
-		deeper.minImageCount = MIN_SWAPCHAIN_IMAGES;
+	/* Off by default: more images did not help the frame ordering, and each
+	   one is a full-screen allocation that a newly created window has to
+	   wait for. Set MALI_SWAPCHAIN_IMAGES to try a different count. */
+	const char *want = getenv("MALI_SWAPCHAIN_IMAGES");
+	if (want) {
+		uint32_t n = (uint32_t)atoi(want);
+		if (n > deeper.minImageCount)
+			deeper.minImageCount = n;
+	}
 	return data->create_swapchain(device, &deeper, alloc, swapchain);
 }
 
