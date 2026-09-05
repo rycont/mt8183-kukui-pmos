@@ -82,21 +82,51 @@ Panfrost 는 OPP 코어를 통해 두 전압을 함께 설정하니 잘 맞지�
 
 ## 유저스페이스
 
-kbase 는 커널 쪽일 뿐이고, GLES/EGL 은 독점 블롭이 담당한다.
+kbase 는 커널 쪽일 뿐이고, GLES/Vulkan 은 독점 블롭이 담당한다.
 
-- **ChromeOS 블롭은 못 쓴다.** Wayland 지원 없이 GBM/surfaceless 로만 빌드돼
-  있어 (`EGL_KHR_platform_wayland` 없음) Wayland 클라이언트가 출력할 수 없다.
-- **Rockchip 배포본을 쓴다.** `libmali-bifrost-g52-g13p0-wayland-gbm.so` 는
-  파일명과 달리 Bifrost 전 세대를 지원해 G72 가 목록에 있고, EGL Wayland 와
-  GBM 을 모두 갖췄다. uAPI major 11 로 r44p1 커널과 맞는다.
-- 이 블롭엔 Vulkan 이 없다. Vulkan 이 든 빌드(g29p1 계열)는 `VK_KHR_wayland_surface`
-  가 없어 별도의 WSI 레이어가 필요하다.
+**블롭은 GPU ID 별로 빌드된다.** 파일 안에 `Mali-G72` 문자열이 있어도 그건 이름
+테이블일 뿐이고, 실제 대상은 따로 있다. Rockchip 배포본을 올리면 이렇게 거부한다:
 
-블롭은 glibc 로 빌드돼 있어 musl 인 pmOS 에서는 `gcompat` 과
-`tools/mali-shim.c` (musl 에 없는 glibc 심볼 8개) 가 필요하다.
+```
+The DDK (built for 0x70020000 r1p0) is not compatible with this Mali GPU device,
+/dev/mali0 detected as 0x6221 r0p3
+```
 
-`mali_platform.conf` 는 ChromeOS 가 쓰는 플랫폼 설정값이다. Rockchip 블롭도
-같은 `MALI_PLATFORM_CONFIG` 환경변수를 읽는다.
+`0x7002` 는 G52 다. Rockchip 은 G72 를 쓰는 SoC 를 만들지 않으니 해당 빌드가 없다.
+공개된 G72 빌드는 **ChromeOS 것뿐이다** (`/usr/lib64/libmali.so.0.54.1`, 복구
+이미지에서 꺼낼 수 있다).
+
+그 블롭은 Wayland EGL 이 없다 — ChromeOS 는 Chrome 하나만 드라이버를 직접 쓰고
+그마저 GBM 경로라, ARM 이 Wayland 플랫폼을 빌드에 넣을 이유가 없었다. 대신
+**Vulkan 1.3 ICD** 가 들어 있다.
+
+```
+$ run-with-mali.sh ./vktest
+device : Mali-G72
+vkCreateInstance = 0
+physical devices = 1
+```
+
+### musl 에서 굴리기
+
+세 겹이 필요하다. `tools/run-with-mali.sh` 가 이를 묶어둔 것이다.
+
+| 문제 | 해법 |
+|---|---|
+| glibc 가 `DT_RELR` 을 거부 (`GLIBC_ABI_DT_RELR` 표기 없음) | musl 로더로 연다. musl 엔 그 검사가 없다 |
+| gcompat 에 없는 glibc 심볼 31개 | `tools/cros-mali-shim.c` — `_FORTIFY_SOURCE` 래퍼, C23 `strtol` 계열, `*64` 대용량 파일 별칭 |
+| `initial-exec` TLS | musl 은 시작 시점 라이브러리에만 이 모델을 허용한다. `dlopen` 대신 `LD_PRELOAD` |
+
+`gcompat` 은 `/opt/gcompat` 에 풀어 쓴다. apk 로 설치하면 다른 용도로 깔아둔
+진짜 glibc 와 `ld-linux-aarch64.so.1` 을 두고 충돌한다.
+
+### 남은 것
+
+Vulkan 에 `VK_KHR_wayland_surface` 가 없어 Wayland 창에 출력할 수 없다. ARM 이
+그 자리를 메우는 WSI 레이어를 따로 배포한다
+([ginkage/libmali-rockchip](https://github.com/ginkage/libmali-rockchip) 의
+`libVkLayer_window_system_integration.so`). Vulkan 로더가 드라이버 앞에 레이어를
+끼우는 구조라, WSI 만 밖에서 붙일 수 있다.
 
 ## 되돌리기
 
@@ -105,6 +135,7 @@ DTB 백업을 되돌리고 `mkinitfs` 후 재부팅하면 Panfrost 로 돌아온
 
 ## 라이선스
 
-`kbase` 는 GPL-2.0 (ARM). `tools/mali-shim.c` 는
-[tech4bot/rk3562deb](https://github.com/tech4bot/rk3562deb) 의 심을 확장한 것이다.
+`kbase` 는 GPL-2.0 (ARM). `tools/cros-mali-shim.c` 는
+[tech4bot/rk3562deb](https://github.com/tech4bot/rk3562deb) 의 musl 심에서
+출발해 이 블롭이 요구하는 심볼까지 채운 것이다.
 유저스페이스 블롭은 ARM EULA 로 재배포할 수 없어 포함하지 않는다.
