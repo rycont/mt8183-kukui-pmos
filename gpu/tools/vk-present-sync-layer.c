@@ -66,6 +66,74 @@ static long pace_interval_us(void)
    consumed by another one. */
 #define PACED_SWAPCHAINS 16
 
+/* MALI_PRESENT_DEBUG reports how evenly a swapchain is actually presenting.
+   Frames leaving the client at a steady 16.7 ms while the motion still stutters
+   would put the fault downstream of here; an uneven trace would put it in the
+   client's own loop. */
+#define TRACE_WINDOW 120
+
+static int cmp_long(const void *a, const void *b)
+{
+	long x = *(const long *)a, y = *(const long *)b;
+	return (x > y) - (x < y);
+}
+
+static long wait_total, wait_max;
+static unsigned wait_n;
+
+static void note_wait(long us)
+{
+	wait_total += us;
+	wait_n++;
+	if (us > wait_max)
+		wait_max = us;
+}
+
+static void trace_present(VkSwapchainKHR key, long delta_us)
+{
+	static struct {
+		VkSwapchainKHR swapchain;
+		long d[TRACE_WINDOW];
+		unsigned n;
+	} t[PACED_SWAPCHAINS];
+	long sorted[TRACE_WINDOW];
+	unsigned i, slot = PACED_SWAPCHAINS, early = 0, late = 0;
+
+	for (i = 0; i < PACED_SWAPCHAINS; i++) {
+		if (t[i].swapchain == key)
+			break;
+		if (!t[i].swapchain && slot == PACED_SWAPCHAINS)
+			slot = i;
+	}
+	if (i == PACED_SWAPCHAINS) {
+		if (slot == PACED_SWAPCHAINS)
+			return;
+		i = slot;
+		t[i].swapchain = key;
+	}
+	t[i].d[t[i].n++] = delta_us;
+	if (t[i].n < TRACE_WINDOW)
+		return;
+
+	memcpy(sorted, t[i].d, sizeof(sorted));
+	qsort(sorted, TRACE_WINDOW, sizeof(long), cmp_long);
+	for (unsigned k = 0; k < TRACE_WINDOW; k++) {
+		if (t[i].d[k] < 12000)
+			early++;
+		else if (t[i].d[k] > 22000)
+			late++;
+	}
+	fprintf(stderr, "[mali] present %p: p50 %ld p95 %ld max %ld us, "
+		"%u under 12ms, %u over 22ms of %d; idle mean %ld max %ld us\n",
+		(void *)key, sorted[TRACE_WINDOW / 2],
+		sorted[TRACE_WINDOW * 95 / 100], sorted[TRACE_WINDOW - 1],
+		early, late, TRACE_WINDOW,
+		wait_n ? wait_total / wait_n : 0, wait_max);
+	t[i].n = 0;
+	wait_total = wait_max = 0;
+	wait_n = 0;
+}
+
 static void pace(const VkPresentInfoKHR *info)
 {
 	static struct {
@@ -77,7 +145,9 @@ static void pace(const VkPresentInfoKHR *info)
 	VkSwapchainKHR key;
 	unsigned i, slot;
 
-	if (interval <= 0 || info->swapchainCount == 0)
+	if (info->swapchainCount == 0)
+		return;
+	if (interval <= 0 && !getenv("MALI_PRESENT_DEBUG"))
 		return;
 	key = info->pSwapchains[0];
 	for (i = 0, slot = PACED_SWAPCHAINS; i < PACED_SWAPCHAINS; i++) {
@@ -97,7 +167,9 @@ static void pace(const VkPresentInfoKHR *info)
 	if (seen[i].last.tv_sec) {
 		waited = (now.tv_sec - seen[i].last.tv_sec) * 1000000 +
 			 (now.tv_nsec - seen[i].last.tv_nsec) / 1000;
-		if (waited < interval) {
+		if (getenv("MALI_PRESENT_DEBUG"))
+			trace_present(key, waited);
+		if (interval > 0 && waited < interval) {
 			struct timespec rest = {
 				.tv_sec = 0,
 				.tv_nsec = (interval - waited) * 1000,
@@ -215,7 +287,18 @@ queue_present(VkQueue queue, const VkPresentInfoKHR *info)
 		announced = 1;
 		fprintf(stderr, LAYER_NAME ": idling the queue before each present\n");
 	}
-	data->wait_idle(queue);
+	/* MALI_PRESENT_NO_WAIT drops the idle wait, which is what serialises the
+	   client: with it, nothing overlaps a frame's rendering with the next
+	   frame's recording. It is here because the compositor gets no fence. */
+	if (!getenv("MALI_PRESENT_NO_WAIT")) {
+		struct timespec a, b;
+
+		clock_gettime(CLOCK_MONOTONIC, &a);
+		data->wait_idle(queue);
+		clock_gettime(CLOCK_MONOTONIC, &b);
+		note_wait((b.tv_sec - a.tv_sec) * 1000000 +
+			  (b.tv_nsec - a.tv_nsec) / 1000);
+	}
 	pace(info);
 	return data->present(queue, info);
 }
@@ -239,12 +322,29 @@ create_swapchain(VkDevice device, const VkSwapchainCreateInfoKHR *info,
 	   one is a full-screen allocation that a newly created window has to
 	   wait for. Set MALI_SWAPCHAIN_IMAGES to try a different count. */
 	const char *want = getenv("MALI_SWAPCHAIN_IMAGES");
-	if (want) {
-		uint32_t n = (uint32_t)atoi(want);
-		if (n > deeper.minImageCount)
-			deeper.minImageCount = n;
-	}
-	return data->create_swapchain(device, &deeper, alloc, swapchain);
+	if (want)
+		deeper.minImageCount = (uint32_t)atoi(want);
+	/* Which present mode the client asked for decides whether the WSI layer
+	   paces on the compositor's frame callbacks at all. MALI_PRESENT_MODE
+	   overrides it: 0 immediate, 1 mailbox, 2 fifo, 3 fifo relaxed. */
+	const char *mode = getenv("MALI_PRESENT_MODE");
+	if (mode)
+		deeper.presentMode = (VkPresentModeKHR)atoi(mode);
+	struct timespec a, b;
+	VkResult r;
+
+	clock_gettime(CLOCK_MONOTONIC, &a);
+	r = data->create_swapchain(device, &deeper, alloc, swapchain);
+	clock_gettime(CLOCK_MONOTONIC, &b);
+	if (getenv("MALI_PRESENT_DEBUG"))
+		fprintf(stderr, "[mali] swapchain %p %ux%u images>=%u mode %d%s "
+			"created in %ld us\n", (void *)*swapchain,
+			deeper.imageExtent.width, deeper.imageExtent.height,
+			deeper.minImageCount, (int)deeper.presentMode,
+			mode ? " (forced)" : "",
+			(b.tv_sec - a.tv_sec) * 1000000 +
+			(b.tv_nsec - a.tv_nsec) / 1000);
+	return r;
 }
 
 #define INTERCEPT(name, fn) \

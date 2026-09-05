@@ -370,3 +370,39 @@ DTB 백업을 되돌리고 `mkinitfs` 후 재부팅하면 Panfrost 로 돌아온
 [tech4bot/rk3562deb](https://github.com/tech4bot/rk3562deb) 의 musl 심에서
 출발해 이 블롭이 요구하는 심볼까지 채운 것이다.
 유저스페이스 블롭은 ARM EULA 로 재배포할 수 없어 포함하지 않는다.
+
+## 남은 문제: 제어센터 애니메이션
+
+제어센터 드로어를 내리면 프레임이 앞으로 갔다 뒤로 돌아온다. 검색창은
+매끄럽다. 둘 다 같은 plasmashell 프로세스, 같은 드라이버, 같은 컴포지터다.
+
+레이어에 계측을 넣어(`MALI_PRESENT_DEBUG=1`) 잰 것:
+
+- present 간격 p50 은 16.6ms 로 정확히 60Hz. 다만 120프레임마다 1~4장이
+  12ms 미만, 1~6장이 22ms 초과다. 평상시 2~5%, 드로어를 연 직후엔 10~14%
+- `vkQueueWaitIdle` 이 프레임당 평균 5.2ms — 예산의 31% 이고 그 동안 CPU 가
+  다음 프레임을 못 시작한다
+- **제어센터는 열 때마다 1920x1200 스왑체인을 새로 만든다** (열고 닫을 때 각
+  하나, 생성 8~14ms). 검색창은 기존 것을 재사용해 하나도 안 만든다
+- KWin 도 팝업이 뜰 때마다 스왑체인을 새로 만든다
+
+시도했고 **전부 체감 차이가 없었던 것**:
+
+| 시도 | 결과 |
+|---|---|
+| `MALI_PRESENT_PACE_US` on/off | 무관 |
+| `vkQueueWaitIdle` 제거 (`MALI_PRESENT_NO_WAIT`) | 무관 |
+| present mode 강제 | 이미 FIFO 였다 |
+| 스왑체인 이미지 3→2 (생성 14→6ms) | 무관 |
+| `QSG_RENDER_LOOP=threaded` | 더 나빠짐 |
+| GPU 클럭 800MHz 고정 (`min_freq`) | 무관 |
+| KWin fade/glide/scale 해제 + 애니메이션 1/100 | 무관 |
+| blur, buffer age, DPMS | 무관 |
+
+`VK_KHR_present_wait` 는 쓸 수 없다 — 이 스택은 `present_wait` 도 `present_id`
+도 광고하지 않는다.
+
+비용을 반으로 줄여도(14→6ms) 체감이 같으므로 원인은 할당 비용이 아니라 **새
+창이 매핑되는 경로 자체**에 있다. 다음에 볼 곳은 KWin 이 새 surface 의 첫
+프레임을 화면에 올리는 시점과 plasmashell 이 애니메이션을 시작하는 시점의
+어긋남이다.
