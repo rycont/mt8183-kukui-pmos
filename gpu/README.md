@@ -92,9 +92,22 @@ The DDK (built for 0x70020000 r1p0) is not compatible with this Mali GPU device,
 /dev/mali0 detected as 0x6221 r0p3
 ```
 
-`0x7002` 는 G52 다. Rockchip 은 G72 를 쓰는 SoC 를 만들지 않으니 해당 빌드가 없다.
+`0x7002` 는 G52 다. 검사는 **제품 ID 정확 일치**를 요구한다 — 리비전 status 에만
+허용 범위가 있다. HiKey970 용 G71 빌드(`0x6001`, DDK r10p0)로 확인했다.
+
+```
+ERROR: The DDK (built for 0x60010000 r0p0 status range [0..15]) is not compatible
+with this Mali GPU device, /dev/mali0 detected as 0x6221 r0p3 status 0.
+```
+
+같은 Bifrost arch 6 인데도 거부한다. `0x6001` 은 arch 6.0.0/product 1 = G71,
+`0x6221` 은 arch 6.2.2/product 1 = G72 다. 세대가 아니라 제품이 달라서다.
+
 공개된 G72 빌드는 **ChromeOS 것뿐이다** (`/usr/lib64/libmali.so.0.54.1`, 복구
-이미지에서 꺼낼 수 있다).
+이미지에서 꺼낼 수 있다). Rockchip 계열 미러(JeffyCN 및 그 포크들)가 담고 있는
+것은 utgard-450 / midgard-t86x / bifrost-g31 / bifrost-g52 / valhall-g310 /
+valhall-g610 뿐 — Rockchip 이 실제로 출하한 GPU 목록이다. G72 를 쓴 칩(Kirin 970,
+Exynos 9810, Helio P60·P70)은 전부 안드로이드 출하라 bionic 블롭이다.
 
 그 블롭은 Wayland EGL 이 없다 — ChromeOS 는 Chrome 하나만 드라이버를 직접 쓰고
 그마저 GBM 경로라, ARM 이 Wayland 플랫폼을 빌드에 넣을 이유가 없었다. 대신
