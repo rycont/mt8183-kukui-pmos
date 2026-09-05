@@ -1,0 +1,46 @@
+#!/bin/sh
+# Build the shim and the layer against whichever libc will load them.
+#
+# The host is musl and the flatpak runtime is glibc, and the driver has to be
+# reached from both: the compositor is a host program, applications shipped as
+# flatpaks are not. The sources are the same; only the libc differs.
+set -e
+
+PREFIX=/opt/mali
+SRC=/usr/share/mali-vendor-krane
+FLATPAK_SDK="${MALI_FLATPAK_SDK:-dev.zed.Zed}"
+
+build() {
+	cc="$1" out="$2" ; shift 2
+	echo "  $out"
+	$cc -shared -fPIC -O2 "$@"
+}
+
+echo "musl:"
+build cc "$PREFIX/egl/libEGL.so.1" \
+	-Wl,-soname,libEGL.so.1 -o "$PREFIX/egl/libEGL.so.1" \
+	"$SRC/egl-gbm-shim.c" -Wl,--no-as-needed "$PREFIX/lib/libmali.so" -ldl
+build cc "$PREFIX/lib/libVkLayer_mali_present_sync.so" \
+	-o "$PREFIX/lib/libVkLayer_mali_present_sync.so" "$SRC/vk-present-sync-layer.c"
+build cc "$PREFIX/lib/mali-shim.so" \
+	-o "$PREFIX/lib/mali-shim.so" "$SRC/cros-mali-shim.c"
+
+# The glibc copies are compiled inside a flatpak runtime, which is the only
+# glibc toolchain on the device.
+if command -v flatpak >/dev/null && flatpak info "$FLATPAK_SDK" >/dev/null 2>&1; then
+	echo "glibc (via $FLATPAK_SDK):"
+	for f in vk-present-sync-layer egl-gbm-shim; do
+		cp "$SRC/$f.c" "$HOME/$f.c"
+	done
+	flatpak run --filesystem=host --command=gcc "$FLATPAK_SDK" \
+		-shared -fPIC -O2 -o "$HOME/libVkLayer_mali_present_sync.so" \
+		"$HOME/vk-present-sync-layer.c"
+	install -m 0755 "$HOME/libVkLayer_mali_present_sync.so" \
+		"$PREFIX/glibc/lib/libVkLayer_mali_present_sync.so"
+	echo "  $PREFIX/glibc/lib/libVkLayer_mali_present_sync.so"
+	rm -f "$HOME"/vk-present-sync-layer.c "$HOME"/egl-gbm-shim.c \
+		"$HOME"/libVkLayer_mali_present_sync.so
+else
+	echo "glibc: no flatpak runtime found; flatpak applications will not be" >&2
+	echo "       able to use the driver until $FLATPAK_SDK is installed." >&2
+fi

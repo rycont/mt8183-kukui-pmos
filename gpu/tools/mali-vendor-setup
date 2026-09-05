@@ -1,0 +1,77 @@
+#!/bin/sh
+# Put ARM's Mali userspace in place. The blob is under ARM's EULA and cannot be
+# redistributed, so it has to come from a ChromeOS image -- the only place a
+# Mali-G72 build for Linux exists. Point this at a mounted ChromeOS root
+# partition (the recovery image's ROOT-A).
+#
+#   mali-vendor-setup /run/media/$USER/ROOT-A
+#
+# Everything else -- the shim, the layer, the manifests -- the package already
+# installed.
+set -e
+
+SRC="$1"
+PREFIX=/opt/mali
+GLIBC="$PREFIX/glibc"
+
+usage() {
+	cat >&2 <<-USAGE
+	usage: mali-vendor-setup <chromeos-root>
+
+	  <chromeos-root>  a mounted ChromeOS ROOT-A partition, holding
+	                   usr/lib64/libmali.so.*
+
+	The WSI layer is a separate download; see the README.
+	USAGE
+	exit 2
+}
+
+[ -n "$SRC" ] || usage
+BLOB=$(ls "$SRC"/usr/lib64/libmali.so.* 2>/dev/null | head -1) || true
+[ -n "$BLOB" ] || { echo "no libmali under $SRC/usr/lib64" >&2; usage; }
+
+echo "blob: $BLOB"
+install -d "$PREFIX/lib" "$PREFIX/egl" "$GLIBC/lib" \
+	"$PREFIX/share/vulkan/icd.d" "$GLIBC/share/vulkan/icd.d"
+
+# The musl loader has no opinion about DT_RELR, so it takes the blob as it is.
+install -m 0755 "$BLOB" "$PREFIX/lib/libmali.so"
+ln -sf libmali.so "$PREFIX/lib/libmali.so.0"
+
+# glibc refuses an object with DT_RELR relocations unless it declares the
+# matching libc version. The ChromeOS build targets its own loader and does not.
+mali-declare-dt-relr "$BLOB" "$GLIBC/lib/libmali.so"
+chmod 0755 "$GLIBC/lib/libmali.so"
+ln -sf libmali.so "$GLIBC/lib/libmali.so.0"
+
+for P in "$PREFIX" "$GLIBC"; do
+	cat > "$P/share/vulkan/icd.d/mali.json" <<-ICD
+	{
+	    "file_format_version": "1.0.0",
+	    "ICD": {
+	        "library_path": "$P/lib/libmali.so",
+	        "api_version": "1.3.211"
+	    }
+	}
+	ICD
+done
+
+# Compositors reach the driver under the name they link against.
+ln -sf "$PREFIX/lib/libmali.so" "$PREFIX/egl/libGLESv2.so.2"
+mali-build-shims
+
+cat <<-DONE
+
+	Installed. Still needed before this works:
+
+	  * the WSI layer, which supplies VK_KHR_wayland_surface --
+	    libVkLayer_window_system_integration.so from
+	    https://github.com/ginkage/libmali-rockchip (GPU-independent),
+	    into $PREFIX/lib and $GLIBC/lib
+	  * a libc++ of LLVM 20 or newer in $GLIBC/lib, for the blob's
+	    std::__1::__hash_memory
+	  * SceneGraphBackend=vulkan in kdeglobals, so Qt does not fall back
+	    to software rendering
+
+	See /usr/share/doc/mali-vendor-krane/README.md.
+DONE

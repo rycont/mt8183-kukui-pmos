@@ -1,0 +1,20 @@
+#!/bin/sh
+cat <<'MSG'
+
+mali-vendor-krane installed. Two things are still needed:
+
+  1. The driver itself. It is under ARM's EULA and cannot be shipped, and the
+     only Mali-G72 build for Linux is ChromeOS's. Mount a ChromeOS recovery
+     image and run:
+
+         mali-vendor-setup /path/to/ROOT-A
+
+  2. A kernel with the Mali kbase driver and a "system" dma-heap, and the GPU
+     device tree node kbase expects. See
+     /usr/share/doc/mali-vendor-krane/README.md.
+
+Panfrost and kbase claim the same device tree node, so only one of them can be
+bound at a time.
+
+MSG
+exit 0

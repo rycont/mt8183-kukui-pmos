@@ -128,3 +128,89 @@ sudo dd if=/dev/mmcblk0p1 of=~/kpart-backup.bin bs=1M
 ```
 
 복구 USB (ChromeOS recovery 또는 pmOS 설치 USB) 도 준비해 두면 안전하다.
+
+## GPU — ARM 공식 Mali 드라이버 (선택)
+
+Panfrost 대신 ARM 의 벤더 스택(kbase + libmali)으로 돌리는 경로다. **Panfrost 와
+동시에 쓸 수 없다** — 같은 DT 노드를 두고 배타적이다. 되돌리려면 DTB 만 원래대로
+굽고 `mali-vendor-krane` 을 지우면 된다.
+
+얻는 것과 잃는 것을 먼저 적어둔다.
+
+| | |
+|---|---|
+| Zed | 33.3 ms → **18.1 ms** (1920x1200 전체화면) |
+| Plasma Mobile | 동작 (KWin 은 GLES, Qt 앱은 Vulkan) |
+| GTK3 앱 | **가속 경로 없음** — 블롭에 Wayland EGL 플랫폼이 없다 |
+| 애니메이션 | 프레임 순서가 완전히 고르지는 않다. `gpu/README.md` 참고 |
+
+### 1. 커널
+
+`linux-postmarketos-mediatek-mt81` 에 DT 패치를 넣고 dma-heap 을 켠다.
+
+```sh
+PM=~/.local/var/pmbootstrap/cache_git/pmaports
+K=$PM/device/community/linux-postmarketos-mediatek-mt81
+cp gpu/dt/0001-dt-mali-kbase.patch $K/mt8183-kukui-mali-kbase.patch
+```
+
+`$K/APKBUILD` 의 `source=` 에 추가하고 `pkgrel` 을 올린 뒤,
+`config-postmarketos-mediatek-mt81.aarch64` 에서:
+
+```
+CONFIG_DMABUF_HEAPS_SYSTEM=y
+```
+
+이게 없으면 WSI 레이어가 스왑체인 버퍼를 잡을 힙을 못 찾아 아무 말 없이
+`abort()` 한다. CMA 힙으로 대신하면 창이 몇 개만 열려도 128MB 를 다 쓴다.
+
+kbase 모듈은 커널 트리 밖에서 만든다:
+
+```sh
+gpu/tools/fetch-kbase.sh kbase-src
+patch -p1 -d kbase-src < gpu/patches/kbase-6.12-to-6.18.diff
+gpu/tools/build-kbase.sh <커널트리> kbase-src
+```
+
+나온 `mali_kbase.ko` 를 기기의 `/lib/modules/$(uname -r)/extra/` 에 넣고
+`depmod -a`, `/etc/modules-load.d/` 에 등록한다. **커널 패키지를 다시 깔면
+지워지므로 그때마다 다시 넣어야 한다.**
+
+### 2. 유저스페이스
+
+```sh
+sudo apk add --allow-untrusted mali-vendor-krane-*.apk
+```
+
+드라이버 자체는 ARM EULA 라 패키지에 못 넣는다. G72 용 리눅스 빌드는 ChromeOS
+것뿐이므로 복구 이미지에서 꺼내야 한다:
+
+```sh
+sudo mali-vendor-setup /run/media/$USER/ROOT-A
+```
+
+여기에 두 가지를 더 넣어야 한다 — 스크립트가 끝에 다시 알려준다:
+
+- `libVkLayer_window_system_integration.so`
+  ([ginkage/libmali-rockchip](https://github.com/ginkage/libmali-rockchip)).
+  블롭엔 `VK_KHR_wayland_surface` 가 없고, 이 레이어가 그 자리를 메운다.
+  GPU 와 무관한 코드라 Rockchip 배포본을 그대로 쓴다.
+- LLVM 20 이상의 `libc++` (Debian arm64 `libc++1` 로 충분). 블롭이
+  `std::__1::__hash_memory` 를 쓰는데 그 이전 판엔 없다. flatpak 쪽
+  `/opt/mali/glibc/lib` 에 둔다.
+
+### 3. Qt 를 Vulkan 으로
+
+이걸 안 하면 셸의 글자와 아이콘이 렌더되지 않는다. `plasma-integration` 이
+GL 을 찔러보고 실패하면 세션 전체를 소프트웨어 백엔드로 못박기 때문이다.
+
+```sh
+kwriteconfig6 --file kdeglobals --group QtQuickRendererSettings \
+    --key SceneGraphBackend vulkan
+```
+
+재부팅하면 KWin 이 `Mali-G72` 로, Qt 앱이 `/dev/mali0` 로 붙는다.
+
+```sh
+qdbus6 org.kde.KWin /KWin supportInformation | grep -i "OpenGL renderer"
+```
