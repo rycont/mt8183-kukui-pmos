@@ -1,0 +1,143 @@
+--- a/arch/arm64/boot/dts/mediatek/mt8183.dtsi	2026-09-05 17:36:42.882312440 +0900
++++ b/arch/arm64/boot/dts/mediatek/mt8183.dtsi	2026-09-05 17:29:10.543266344 +0900
+@@ -563,82 +563,82 @@
+ 
+ 		opp-300000000 {
+ 			opp-hz = /bits/ 64 <300000000>;
+-			opp-microvolt = <625000>;
++			opp-microvolt = <625000>, <850000>;
+ 		};
+ 
+ 		opp-320000000 {
+ 			opp-hz = /bits/ 64 <320000000>;
+-			opp-microvolt = <631250>;
++			opp-microvolt = <631250>, <850000>;
+ 		};
+ 
+ 		opp-340000000 {
+ 			opp-hz = /bits/ 64 <340000000>;
+-			opp-microvolt = <637500>;
++			opp-microvolt = <637500>, <850000>;
+ 		};
+ 
+ 		opp-360000000 {
+ 			opp-hz = /bits/ 64 <360000000>;
+-			opp-microvolt = <643750>;
++			opp-microvolt = <643750>, <850000>;
+ 		};
+ 
+ 		opp-380000000 {
+ 			opp-hz = /bits/ 64 <380000000>;
+-			opp-microvolt = <650000>;
++			opp-microvolt = <650000>, <850000>;
+ 		};
+ 
+ 		opp-400000000 {
+ 			opp-hz = /bits/ 64 <400000000>;
+-			opp-microvolt = <656250>;
++			opp-microvolt = <656250>, <850000>;
+ 		};
+ 
+ 		opp-420000000 {
+ 			opp-hz = /bits/ 64 <420000000>;
+-			opp-microvolt = <662500>;
++			opp-microvolt = <662500>, <850000>;
+ 		};
+ 
+ 		opp-460000000 {
+ 			opp-hz = /bits/ 64 <460000000>;
+-			opp-microvolt = <675000>;
++			opp-microvolt = <675000>, <850000>;
+ 		};
+ 
+ 		opp-500000000 {
+ 			opp-hz = /bits/ 64 <500000000>;
+-			opp-microvolt = <687500>;
++			opp-microvolt = <687500>, <850000>;
+ 		};
+ 
+ 		opp-540000000 {
+ 			opp-hz = /bits/ 64 <540000000>;
+-			opp-microvolt = <700000>;
++			opp-microvolt = <700000>, <850000>;
+ 		};
+ 
+ 		opp-580000000 {
+ 			opp-hz = /bits/ 64 <580000000>;
+-			opp-microvolt = <712500>;
++			opp-microvolt = <712500>, <850000>;
+ 		};
+ 
+ 		opp-620000000 {
+ 			opp-hz = /bits/ 64 <620000000>;
+-			opp-microvolt = <725000>;
++			opp-microvolt = <725000>, <850000>;
+ 		};
+ 
+ 		opp-653000000 {
+ 			opp-hz = /bits/ 64 <653000000>;
+-			opp-microvolt = <743750>;
++			opp-microvolt = <743750>, <850000>;
+ 		};
+ 
+ 		opp-698000000 {
+ 			opp-hz = /bits/ 64 <698000000>;
+-			opp-microvolt = <768750>;
++			opp-microvolt = <768750>, <868750>;
+ 		};
+ 
+ 		opp-743000000 {
+ 			opp-hz = /bits/ 64 <743000000>;
+-			opp-microvolt = <793750>;
++			opp-microvolt = <793750>, <893750>;
+ 		};
+ 
+ 		opp-800000000 {
+ 			opp-hz = /bits/ 64 <800000000>;
+-			opp-microvolt = <825000>;
++			opp-microvolt = <825000>, <925000>;
+ 		};
+ 	};
+ 
+@@ -1646,7 +1646,7 @@
+ 				<GIC_SPI 280 IRQ_TYPE_LEVEL_LOW>,
+ 				<GIC_SPI 279 IRQ_TYPE_LEVEL_LOW>,
+ 				<GIC_SPI 278 IRQ_TYPE_LEVEL_LOW>;
+-			interrupt-names = "job", "mmu", "gpu";
++			interrupt-names = "JOB", "MMU", "GPU";
+ 
+ 			clocks = <&mfgcfg CLK_MFG_BG3D>;
+ 
+--- a/arch/arm64/boot/dts/mediatek/mt8183-kukui.dtsi	2026-09-05 17:36:42.882370730 +0900
++++ b/arch/arm64/boot/dts/mediatek/mt8183-kukui.dtsi	2026-09-05 17:32:56.342769964 +0900
+@@ -272,6 +272,8 @@
+ 
+ &gpu {
+ 	mali-supply = <&mt6358_vgpu_reg>;
++	sram-supply = <&mt6358_vsram_gpu_reg>;
++	supply-names = "mali", "sram";
+ };
+ 
+ &i2c0 {
+@@ -432,8 +434,9 @@
+ &mt6358_vgpu_reg {
+ 	regulator-max-microvolt = <900000>;
+ 
+-	regulator-coupled-with = <&mt6358_vsram_gpu_reg>;
+-	regulator-coupled-max-spread = <100000>;
++	/* The Mali kbase driver steps vgpu and vsram_gpu itself, keeping the bias
++	 * between them inside the limits the hardware requires. Leaving the
++	 * regulators coupled makes the core reject those individual writes. */
+ };
+ 
+ &mt6358_vsim1_reg {
+@@ -449,9 +452,6 @@
+ &mt6358_vsram_gpu_reg {
+ 	regulator-min-microvolt = <850000>;
+ 	regulator-max-microvolt = <1000000>;
+-
+-	regulator-coupled-with = <&mt6358_vgpu_reg>;
+-	regulator-coupled-max-spread = <100000>;
+ };
+ 
+ &pio {
